@@ -1,0 +1,283 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id               String            @id @default(cuid())
+  fullName         String
+  email            String            @unique
+  passwordHash     String
+  phone            String?
+  country          String            @default("PK")
+  city             String?
+  userType         UserType
+  businessName     String?
+  status           UserStatus        @default(ACTIVE)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  taskerProfile    TaskerProfile?
+  customerTasks    Task[]            @relation("CustomerTasks")
+  assignedTasks    Task[]            @relation("TaskerAssignments")
+  quotes           Quote[]
+  messages         Message[]
+  ratingsGiven     Rating[]          @relation("RatingsGiven")
+  ratingsReceived  Rating[]          @relation("RatingsReceived")
+  payouts          Payout[]
+  fbrReportRecords FBRReportRecord[]
+}
+
+model TaskerProfile {
+  id                    String           @id @default(cuid())
+  userId                String           @unique
+  user                  User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ntin                  String?
+  ntinVerified          Boolean          @default(false)
+  verificationTier      VerificationTier @default(BASIC)
+  categories            String[]
+  serviceAreas          String[]
+  bio                   String?
+  priceFrom             Int?
+  rating                Float            @default(0)
+  ratingCount           Int              @default(0)
+  completedJobs         Int              @default(0)
+  backgroundCheckStatus BackgroundStatus @default(PENDING)
+  status                ProfileStatus    @default(ACTIVE)
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+}
+
+model Task {
+  id                String             @id @default(cuid())
+  title             String
+  description       String
+  category          String
+  serviceType       String
+  city              String
+  neighborhood      String?
+  budgetMin         Int?
+  budgetMax         Int?
+  preferredDate     DateTime?
+  durationHours     Int?
+  status            TaskStatus         @default(OPEN)
+  customerId        String
+  customer          User               @relation("CustomerTasks", fields: [customerId], references: [id])
+  taskerId          String?
+  tasker            User?              @relation("TaskerAssignments", fields: [taskerId], references: [id])
+  requirements      Json?
+  addressMode       AddressMode        @default(DISCLOSED_AFTER_ESCROW)
+  addressEncrypted  String?
+  taskerCompletedAt DateTime?
+  completedAt       DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  quotes            Quote[]
+  escrowTransaction EscrowTransaction?
+  messages          Message[]
+  ratings           Rating[]
+
+  @@index([status, category, city])
+  @@index([customerId])
+  @@index([taskerId])
+}
+
+model Quote {
+  id           String      @id @default(cuid())
+  taskId       String
+  task         Task        @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  taskerId     String
+  tasker       User        @relation(fields: [taskerId], references: [id])
+  quoteText    String
+  amountPKR    Int
+  etaHours     Int
+  scopeSummary String
+  status       QuoteStatus @default(ACTIVE)
+  createdAt    DateTime    @default(now())
+  expiresAt    DateTime?
+
+  @@unique([taskId, taskerId])
+}
+
+model EscrowTransaction {
+  id               String            @id @default(cuid())
+  taskId           String            @unique
+  task             Task              @relation(fields: [taskId], references: [id])
+  customerId       String
+  taskerId         String
+  amount           Int
+  commissionPct    Int               @default(11)
+  commissionAmount Int
+  netAmount        Int
+  status           EscrowStatus      @default(FUNDED)
+  paymentMethod    String?
+  paymentReference String?
+  createdAt        DateTime          @default(now())
+  escrowedAt       DateTime?
+  autoReleaseAt    DateTime?
+  releasedAt       DateTime?
+  refundedAt       DateTime?
+  payout           Payout?
+  fbrRecords       FBRReportRecord[]
+}
+
+model Payout {
+  id                  String            @id @default(cuid())
+  escrowTransactionId String            @unique
+  escrowTransaction   EscrowTransaction @relation(fields: [escrowTransactionId], references: [id])
+  taskerId            String
+  tasker              User              @relation(fields: [taskerId], references: [id])
+  grossAmount         Int
+  commissionAmount    Int
+  netAmount           Int
+  paymentMethod       String            @default("bank_transfer")
+  status              PayoutStatus      @default(PENDING)
+  paidAt              DateTime?
+  createdAt           DateTime          @default(now())
+}
+
+model Message {
+  id              String          @id @default(cuid())
+  taskId          String
+  task            Task            @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  senderId        String
+  sender          User            @relation(fields: [senderId], references: [id])
+  channelType     MessageChannel  @default(IN_APP)
+  body            String
+  visibilityState VisibilityState @default(ACTIVE)
+  createdAt       DateTime        @default(now())
+  flagged         Boolean         @default(false)
+
+  @@index([taskId, createdAt])
+}
+
+model Rating {
+  id              String   @id @default(cuid())
+  taskId          String
+  task            Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  fromUserId      String
+  fromUser        User     @relation("RatingsGiven", fields: [fromUserId], references: [id])
+  toUserId        String
+  toUser          User     @relation("RatingsReceived", fields: [toUserId], references: [id])
+  overall         Int
+  punctuality     Int
+  professionalism Int
+  communication   Int
+  comment         String?
+  createdAt       DateTime @default(now())
+
+  @@unique([taskId, fromUserId])
+}
+
+model FBRReportRecord {
+  id                  String             @id @default(cuid())
+  reportMonth         DateTime
+  sellerId            String
+  seller              User               @relation(fields: [sellerId], references: [id])
+  taskId              String?
+  transactionId       String?
+  grossSales          Int
+  commissionAmount    Int
+  netPayout           Int
+  status              FBRStatus          @default(PENDING)
+  createdAt           DateTime           @default(now())
+  escrowTransactionId String?
+  escrowTransaction   EscrowTransaction? @relation(fields: [escrowTransactionId], references: [id])
+
+  @@index([reportMonth, sellerId])
+}
+
+enum UserType {
+  CUSTOMER
+  TASKER
+  BUSINESS
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  PENDING_VERIFICATION
+  SUSPENDED
+  BANNED
+}
+
+enum VerificationTier {
+  BASIC
+  TRUSTED
+  HIGH_TRUST
+}
+
+enum BackgroundStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum ProfileStatus {
+  ACTIVE
+  INACTIVE
+  UNDER_REVIEW
+}
+
+enum TaskStatus {
+  OPEN
+  MATCHED
+  ASSIGNED
+  ESCROW_ACTIVE
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  DISPUTED
+  EXPIRED
+}
+
+enum AddressMode {
+  HIDDEN
+  DISCLOSED_AFTER_ESCROW
+}
+
+enum QuoteStatus {
+  ACTIVE
+  ACCEPTED
+  REJECTED
+  EXPIRED
+  WITHDRAWN
+}
+
+enum EscrowStatus {
+  PENDING
+  FUNDED
+  RELEASED
+  REFUNDED
+  DISPUTED
+  FAILED
+}
+
+enum PayoutStatus {
+  PENDING
+  PROCESSING
+  PAID
+  FAILED
+}
+
+enum MessageChannel {
+  IN_APP
+  VOICE_PROXY
+  SYSTEM
+}
+
+enum VisibilityState {
+  ACTIVE
+  MASKED
+  READ_ONLY
+  CLOSED
+}
+
+enum FBRStatus {
+  PENDING
+  GENERATED
+  ARCHIVED
+}

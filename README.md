@@ -1,36 +1,74 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# TaskMarket PK
 
-## Getting Started
+TaskMarket PK is an escrow-protected marketplace for local services, tutoring, and freelance work in Pakistan. Customers post tasks and compare quotes from NTN-verified taskers. Accepted work is funded through escrow, with masked communication and FBR-ready seller summaries.
 
-First, run the development server:
+## Requirements
+
+- Node.js 20+
+- PostgreSQL 14+
+
+## Local setup
+
+1. Install dependencies:
+
+   ```bash
+   npm install
+   ```
+
+2. Create a PostgreSQL database and copy `.env.example` to `.env.local`. Set `DATABASE_URL`; the other secrets can remain empty for local development.
+
+3. Create the database schema:
+
+   ```bash
+   npm run prisma:push
+   ```
+
+4. Load the demo marketplace data:
+
+   ```bash
+   npm run prisma:seed
+   ```
+
+5. Start the development server:
+
+   ```bash
+   npm run dev
+   ```
+
+Open http://localhost:3000.
+
+To reset the local database and reload the demo data, run `npm run prisma:seed -- --reset`.
+
+## Demo accounts
+
+All demo accounts use the password `password123`:
+
+| Role | Email |
+| --- | --- |
+| Admin | `admin@taskmarket.pk` |
+| Customer | `ayesha@example.com` |
+| Customer | `usman@example.com` |
+| Business | `zafar@example.com` |
+| Verified tasker | `hina@example.com` |
+| Verified tasker | `bilal@example.com` |
+
+The seed also includes open tasks, competing quotes, an in-progress escrow task, chat messages, a completed job, a payout, ratings, and an FBR report record.
+
+## Useful commands
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm run typecheck
+npm run lint
+npm run build
+npm run prisma:studio
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Production configuration
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Set `DATABASE_URL`, `SESSION_SECRET`, `ADDRESS_ENCRYPTION_KEY`, and `CRON_SECRET` in the deployment environment. Generate the secrets with:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
 
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Call `GET /api/cron/auto-release` hourly with `Authorization: Bearer $CRON_SECRET` so eligible escrows release automatically. The endpoint returns `401` when the secret is missing or invalid.
