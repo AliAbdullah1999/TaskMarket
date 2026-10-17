@@ -1,169 +1,190 @@
 import Link from "next/link";
-import { TaskCard } from "@/components/task-card";
-import { TaskerCard } from "@/components/tasker-card";
-import { getCurrentUser, isCustomer } from "@/lib/auth";
-import { CATEGORIES, CATEGORY_DESCRIPTIONS, COMMISSION_PCT } from "@/lib/constants";
+import { JobCard } from "@/components/job-card";
+import { getCurrentUser } from "@/lib/auth";
+import { JOB_CATEGORIES } from "@/lib/constants";
 import { prisma } from "@/lib/db";
 
 export default async function Home() {
-  const user = await getCurrentUser();
-  const [openTasks, verifiedTaskers, completedTasks, recentTasks, topTaskers] = await Promise.all([
-    prisma.task.count({ where: { status: "OPEN" } }),
-    prisma.taskerProfile.count({ where: { ntinVerified: true, status: "ACTIVE" } }),
-    prisma.task.count({ where: { status: "COMPLETED" } }),
-    prisma.task.findMany({
-      where: { status: "OPEN" },
+  const [user, openJobs, employers, candidates, jobs] = await Promise.all([
+    getCurrentUser(),
+    prisma.job.count({ where: { status: "OPEN", OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] } }),
+    prisma.user.count({ where: { userType: "EMPLOYER" } }),
+    prisma.user.count({ where: { userType: "CANDIDATE" } }),
+    prisma.job.findMany({
+      where: { status: "OPEN", OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] },
       orderBy: { createdAt: "desc" },
-      take: 3,
-      include: { _count: { select: { quotes: { where: { status: "ACTIVE" } } } } },
-    }),
-    prisma.taskerProfile.findMany({
-      where: { ntinVerified: true, status: "ACTIVE" },
-      orderBy: [{ rating: "desc" }, { completedJobs: "desc" }],
-      take: 4,
-      include: { user: { select: { id: true, fullName: true, businessName: true, city: true } } },
+      take: 6,
+      include: {
+        employer: { select: { fullName: true, employerProfile: { select: { companyName: true } } } },
+        _count: { select: { applications: true } },
+      },
     }),
   ]);
-
-  const postHref = user ? (isCustomer(user) ? "/tasks/new" : "/tasks") : "/signup";
+  const employer = user?.userType === "EMPLOYER";
 
   return (
     <main>
-      <section className="mx-auto max-w-7xl px-6 pb-16 pt-12">
-        <div className="grid gap-10 lg:grid-cols-[1.3fr_0.7fr] lg:items-center">
+      <section className="bg-gradient-to-br from-emerald-50 via-white to-sky-50">
+        <div className="mx-auto grid max-w-7xl gap-12 px-6 py-16 lg:grid-cols-[1.15fr_0.85fr] lg:items-center lg:py-24">
           <div>
-            <span className="inline-flex rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] text-emerald-700">
-              Trusted local marketplace
+            <span className="inline-flex rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-emerald-800">
+              Careers and hiring across Pakistan
             </span>
-            <h1 className="mt-6 max-w-xl text-4xl font-black tracking-tight text-slate-950 md:text-6xl">
-              Book vetted help for home, learning, and freelance work.
+            <h1 className="mt-6 max-w-2xl text-4xl font-black tracking-tight text-slate-950 md:text-6xl">
+              Find work that moves your career forward.
             </h1>
             <p className="mt-5 max-w-xl text-lg leading-8 text-slate-600">
-              Post what you need, compare quotes from NTN-verified taskers, and pay into escrow. Your money is only released when the job is done.
+              Explore opportunities, present your skills, and apply in one place. Employers can reach talent and manage every application from a single dashboard.
             </p>
-
-            <div className="mt-8 flex flex-wrap gap-4">
-              <Link href={postHref} className="rounded-full bg-emerald-600 px-6 py-3 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500">
-                {user && !isCustomer(user) ? "Find work" : "Post a task"}
+            <div className="mt-8 flex flex-wrap gap-3">
+              <Link href="/jobs" className="rounded-full bg-emerald-600 px-6 py-3 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500">
+                Explore jobs
               </Link>
               <Link
-                href={user ? "/taskers" : "/signup?role=TASKER"}
+                href={employer ? "/jobs/new" : "/signup?role=EMPLOYER"}
                 className="rounded-full border border-slate-200 bg-white px-6 py-3 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
               >
-                {user ? "Explore taskers" : "Become a tasker"}
+                {employer ? "Post a job" : "Hire talent"}
               </Link>
             </div>
-
-            <div className="mt-8 flex flex-wrap gap-3 text-sm text-slate-600">
-              {["NTN required before quoting", "Escrow before execution", "Masked contact details", "FBR monthly seller summaries"].map((item) => (
-                <span key={item} className="rounded-full border border-slate-200 bg-white px-3 py-1.5">
-                  ✓ {item}
-                </span>
-              ))}
-            </div>
+            <p className="mt-5 text-sm text-slate-500">Free to join · Paid plans for candidates and employers · Pakistan-focused</p>
           </div>
 
-          <div className="rounded-[30px] border border-slate-200 bg-white p-6 shadow-sm">
-            <p className="text-sm font-medium text-slate-500">Live marketplace</p>
-            <h2 className="mt-1 text-2xl font-bold text-slate-900">Right now on the platform</h2>
-            <div className="mt-6 grid grid-cols-2 gap-4">
+          <div className="rounded-[30px] border border-slate-200 bg-white p-6 shadow-lg shadow-slate-900/5">
+            <p className="text-sm font-semibold text-emerald-700">A clearer way to connect</p>
+            <h2 className="mt-2 text-2xl font-bold text-slate-900">Your next opportunity starts here</h2>
+            <div className="mt-6 grid grid-cols-2 gap-3">
               {[
-                { label: "Open tasks", value: openTasks.toLocaleString() },
-                { label: "Verified taskers", value: verifiedTaskers.toLocaleString() },
-                { label: "Jobs completed", value: completedTasks.toLocaleString() },
-                { label: "Commission", value: `${COMMISSION_PCT}%` },
-              ].map((stat) => (
-                <div key={stat.label} className="rounded-2xl bg-slate-50 p-4">
-                  <p className="text-xs uppercase tracking-[0.12em] text-slate-500">{stat.label}</p>
-                  <p className="mt-2 text-2xl font-black text-slate-900">{stat.value}</p>
+                ["Open jobs", openJobs.toLocaleString()],
+                ["Hiring organizations", employers.toLocaleString()],
+                ["Candidate profiles", candidates.toLocaleString()],
+                ["Locations", "Nationwide"],
+              ].map(([label, value]) => (
+                <div key={label} className="rounded-2xl bg-slate-50 p-4">
+                  <p className="text-xs uppercase tracking-wide text-slate-500">{label}</p>
+                  <p className="mt-2 text-xl font-black text-slate-900">{value}</p>
                 </div>
               ))}
             </div>
+            <div className="mt-5 rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
+              <p className="font-semibold text-emerald-950">Built for both sides of hiring</p>
+              <p className="mt-1 text-sm leading-6 text-emerald-900">Candidates manage applications and career profiles. Employers publish vacancies and review applicants.</p>
+            </div>
           </div>
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-6 py-10">
-        <p className="text-sm font-semibold uppercase tracking-[0.16em] text-emerald-600">How it works</p>
-        <div className="mt-6 grid gap-4 md:grid-cols-4">
-          {[
-            ["1. Post", "Describe the job, budget and city. Your address stays private."],
-            ["2. Compare", "Verified taskers send fixed quotes with scope and timing."],
-            ["3. Pay into escrow", "Fund the accepted quote. Chat and address unlock for your tasker."],
-            ["4. Release", `Confirm when done — or funds auto-release 48h after completion.`],
-          ].map(([title, body]) => (
-            <div key={title} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-              <h3 className="font-bold text-slate-900">{title}</h3>
-              <p className="mt-2 text-sm text-slate-600">{body}</p>
+      {jobs.length ? (
+        <section className="mx-auto max-w-7xl px-6 py-14">
+          <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <p className="text-sm font-semibold uppercase tracking-[0.16em] text-emerald-700">Recently posted</p>
+              <h2 className="mt-2 text-2xl font-bold text-slate-900">Latest opportunities</h2>
             </div>
-          ))}
-        </div>
-      </section>
+            <Link href="/jobs" className="text-sm font-semibold text-emerald-700 hover:text-emerald-900">View all jobs →</Link>
+          </div>
+          <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+            {jobs.map((job) => <JobCard key={job.id} job={job} />)}
+          </div>
+        </section>
+      ) : (
+        <section className="mx-auto max-w-7xl px-6 py-14">
+          <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-10 text-center">
+            <h2 className="text-xl font-bold text-slate-900">Be among the first to post or apply</h2>
+            <p className="mt-2 text-sm text-slate-600">Create a candidate profile or join as an employer to get started.</p>
+            <Link href="/signup" className="mt-5 inline-flex rounded-full bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white">Create an account</Link>
+          </div>
+        </section>
+      )}
 
-      <section className="mx-auto max-w-7xl px-6 py-10">
-        <p className="text-sm font-semibold uppercase tracking-[0.16em] text-emerald-600">Popular categories</p>
-        <h2 className="mt-2 text-2xl font-bold text-slate-900">Find the right service</h2>
-        <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-          {CATEGORIES.map((category) => (
+      <section className="mx-auto max-w-7xl px-6 py-14">
+        <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-[0.16em] text-emerald-700">Explore by field</p>
+            <h2 className="mt-2 text-2xl font-bold text-slate-900">Find roles in your industry</h2>
+            <p className="mt-2 max-w-xl text-sm leading-6 text-slate-600">Start with a field that matches your experience, then discover opportunities across Pakistan.</p>
+          </div>
+          <Link href="/jobs" className="text-sm font-semibold text-emerald-700 hover:text-emerald-900">Browse all jobs →</Link>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {JOB_CATEGORIES.map((category) => (
             <Link
               key={category}
-              href={`/taskers?category=${encodeURIComponent(category)}`}
-              className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm hover:-translate-y-0.5 hover:border-emerald-200"
+              href={`/jobs?category=${encodeURIComponent(category)}`}
+              className="group flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-5 py-4 text-sm font-semibold text-slate-800 shadow-sm hover:border-emerald-300 hover:bg-emerald-50"
             >
-              <h3 className="text-base font-bold text-slate-900">{category}</h3>
-              <p className="mt-2 text-sm text-slate-600">{CATEGORY_DESCRIPTIONS[category]}</p>
+              <span>{category}</span>
+              <span aria-hidden="true" className="text-lg text-slate-400 group-hover:text-emerald-700">→</span>
             </Link>
           ))}
         </div>
       </section>
 
-      {topTaskers.length > 0 ? (
-        <section className="mx-auto max-w-7xl px-6 py-10">
-          <div className="mb-6 flex items-end justify-between gap-4">
-            <div>
-              <p className="text-sm font-semibold uppercase tracking-[0.16em] text-emerald-600">Top taskers</p>
-              <h2 className="mt-2 text-2xl font-bold text-slate-900">Vetted professionals</h2>
-            </div>
-            <Link href="/taskers" className="text-sm font-semibold text-emerald-700">View all →</Link>
+      <section className="mx-auto max-w-7xl px-6 py-14">
+        <div className="mb-6">
+          <p className="text-sm font-semibold uppercase tracking-[0.16em] text-emerald-700">A clear path forward</p>
+          <h2 className="mt-2 text-2xl font-bold text-slate-900">One platform, two ways to move ahead</h2>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">Whether you&apos;re looking for your next role or building a team, get started in a few simple steps.</p>
+        </div>
+        <div className="grid gap-5 lg:grid-cols-2">
+          <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+            <p className="text-sm font-semibold uppercase tracking-wide text-emerald-700">For candidates</p>
+            <h3 className="mt-2 text-xl font-bold text-slate-900">Take the next step in your career</h3>
+            <ol className="mt-5 space-y-4">
+              {[
+                ["01", "Create your profile", "Share your experience and skills with a career profile."],
+                ["02", "Explore open roles", "Search opportunities by title, field, or location."],
+                ["03", "Apply and stay organized", "Submit applications and follow their progress from your dashboard."],
+              ].map(([number, title, description]) => (
+                <li key={number} className="flex gap-4">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-xs font-bold text-emerald-800">{number}</span>
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">{title}</p>
+                    <p className="mt-1 text-sm leading-5 text-slate-600">{description}</p>
+                  </div>
+                </li>
+              ))}
+            </ol>
+            <Link href={user?.userType === "CANDIDATE" ? "/profile" : "/signup?role=CANDIDATE"} className="mt-6 inline-flex rounded-full bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-500">
+              Build your profile
+            </Link>
           </div>
-          <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
-            {topTaskers.map((profile) => (
-              <TaskerCard key={profile.id} profile={profile} />
-            ))}
+          <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+            <p className="text-sm font-semibold uppercase tracking-wide text-sky-700">For employers</p>
+            <h3 className="mt-2 text-xl font-bold text-slate-900">Find the people your team needs</h3>
+            <ol className="mt-5 space-y-4">
+              {[
+                ["01", "Set up your company", "Create an employer account to manage your hiring."],
+                ["02", "Publish a job", "Share the role, requirements, and location with candidates."],
+                ["03", "Review applicants", "Keep applications moving from your hiring dashboard."],
+              ].map(([number, title, description]) => (
+                <li key={number} className="flex gap-4">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-sky-50 text-xs font-bold text-sky-800">{number}</span>
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">{title}</p>
+                    <p className="mt-1 text-sm leading-5 text-slate-600">{description}</p>
+                  </div>
+                </li>
+              ))}
+            </ol>
+            <Link href={employer ? "/jobs/new" : "/signup?role=EMPLOYER"} className="mt-6 inline-flex rounded-full bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-slate-700">
+              {employer ? "Post a job" : "Start hiring"}
+            </Link>
           </div>
-        </section>
-      ) : null}
+        </div>
+      </section>
 
-      {recentTasks.length > 0 ? (
-        <section className="mx-auto max-w-7xl px-6 py-10">
-          <div className="mb-6 flex items-end justify-between gap-4">
-            <div>
-              <p className="text-sm font-semibold uppercase tracking-[0.16em] text-emerald-600">Latest tasks</p>
-              <h2 className="mt-2 text-2xl font-bold text-slate-900">Open for quotes</h2>
-            </div>
-            <Link href="/tasks" className="text-sm font-semibold text-emerald-700">Browse all →</Link>
-          </div>
-          <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-            {recentTasks.map((task) => (
-              <TaskCard key={task.id} task={task} />
-            ))}
-          </div>
-        </section>
-      ) : null}
-
-      <section className="mx-auto max-w-7xl px-6 py-12">
-        <div className="grid gap-6 rounded-[32px] bg-slate-900 p-8 text-white md:grid-cols-3">
+      <section className="mx-auto max-w-7xl px-6 pb-16">
+        <div className="grid gap-5 rounded-3xl bg-slate-900 p-8 text-white md:grid-cols-2">
           <div>
-            <p className="text-sm uppercase tracking-[0.14em] text-emerald-300">Trust first</p>
-            <h3 className="mt-2 text-2xl font-bold">Payments protected by escrow</h3>
+            <p className="text-sm font-semibold uppercase tracking-wide text-emerald-300">For candidates</p>
+            <h2 className="mt-2 text-2xl font-bold">Make your experience visible</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-300">Build a profile, search relevant roles, and keep track of applications and outcomes.</p>
           </div>
           <div>
-            <p className="text-sm uppercase tracking-[0.14em] text-emerald-300">FBR-ready</p>
-            <h3 className="mt-2 text-2xl font-bold">NTN checks before quoting</h3>
-          </div>
-          <div>
-            <p className="text-sm uppercase tracking-[0.14em] text-emerald-300">Masked comms</p>
-            <h3 className="mt-2 text-2xl font-bold">Safe coordination after escrow</h3>
+            <p className="text-sm font-semibold uppercase tracking-wide text-emerald-300">For employers</p>
+            <h2 className="mt-2 text-2xl font-bold">Reach people ready for their next role</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-300">Publish vacancies and manage candidate review from a hiring dashboard.</p>
           </div>
         </div>
       </section>

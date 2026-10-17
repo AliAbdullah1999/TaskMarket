@@ -2,347 +2,268 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Badge, Card, EmptyState, PageHeader, StatTile } from "@/components/ui";
-import { type CurrentUser, isCustomer, requireUser } from "@/lib/auth";
+import { LegacyAccountMigration } from "@/components/legacy-account-migration";
+import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { runAutoRelease } from "@/lib/escrow";
-import { formatBudget, formatDate, formatPKR, payoutStatusMeta, quoteStatusMeta, taskStatusMeta } from "@/lib/format";
+import { formatDate } from "@/lib/format";
 
 export const metadata: Metadata = { title: "Dashboard" };
 
 export default async function DashboardPage() {
   const user = await requireUser();
   if (user.userType === "ADMIN") redirect("/admin");
-  await runAutoRelease();
+  if (user.userType !== "CANDIDATE" && user.userType !== "EMPLOYER") {
+    return <LegacyAccountMigration user={user} />;
+  }
 
-  return isCustomer(user) ? <CustomerDashboard user={user} /> : <TaskerDashboard user={user} />;
-}
+  const subscription = await prisma.subscription.findFirst({
+    where: { userId: user.id, status: { in: ["REQUESTED", "ACTIVE"] } },
+    orderBy: { createdAt: "desc" },
+  });
 
-const ACTIVE_STATUSES = ["OPEN", "ASSIGNED", "ESCROW_ACTIVE", "IN_PROGRESS", "DISPUTED"] as const;
+  if (user.userType === "CANDIDATE") {
+    const [profile, applications, thisMonthCount] = await Promise.all([
+      prisma.candidateProfile.findUnique({ where: { userId: user.id } }),
+      prisma.jobApplication.findMany({
+        where: { candidateId: user.id },
+        orderBy: { createdAt: "desc" },
+        take: 30,
+        include: {
+          job: {
+            include: {
+              employer: {
+                select: { fullName: true, employerProfile: { select: { companyName: true } } },
+              },
+            },
+          },
+        },
+      }),
+      prisma.jobApplication.count({
+        where: {
+          candidateId: user.id,
+          createdAt: { gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1) },
+          status: { not: "WITHDRAWN" },
+        },
+      }),
+    ]);
+    const hasPro = subscription?.status === "ACTIVE" && subscription.currentPeriodEnd && subscription.currentPeriodEnd > new Date();
+    const statusTone = (status: string) =>
+      status === "HIRED" || status === "SHORTLISTED"
+        ? "green"
+        : status === "REJECTED"
+          ? "red"
+          : status === "REVIEWING"
+            ? "blue"
+            : "slate";
+    const profileComplete = Boolean(profile?.headline && profile.summary && profile.skills.length);
 
-async function CustomerDashboard({ user }: { user: CurrentUser }) {
-  const [tasks, spend] = await Promise.all([
-    prisma.task.findMany({
-      where: { customerId: user.id },
-      orderBy: { updatedAt: "desc" },
-      include: {
-        _count: { select: { quotes: { where: { status: "ACTIVE" } } } },
-        tasker: { select: { fullName: true, businessName: true } },
-        escrowTransaction: { select: { amount: true, status: true } },
-      },
-    }),
-    prisma.escrowTransaction.aggregate({ where: { customerId: user.id, status: "RELEASED" }, _sum: { amount: true } }),
-  ]);
+    return (
+      <main className="mx-auto max-w-7xl px-6 py-8">
+        <PageHeader
+          eyebrow="Candidate workspace"
+          title={`Good to see you, ${user.fullName.split(" ")[0]}`}
+          description="Your job search, applications, and career profile—together in one place."
+          action={<Link href="/jobs" className="rounded-full bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500">Explore jobs</Link>}
+        />
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <StatTile label="Applications" value={String(applications.length)} hint="All submitted applications" />
+          <StatTile label="This month" value={String(thisMonthCount)} hint={hasPro ? "Unlimited with Pro" : "3 applications on Free"} />
+          <StatTile label="Profile" value={profileComplete ? "Complete" : "In progress"} hint={profile?.isPublic ? "Visible to employers" : "Private to you"} />
+          <StatTile label="Membership" value={hasPro ? "Pro" : subscription?.status === "REQUESTED" ? "Pending" : "Free"} hint={hasPro ? "Active plan" : "Upgrade any time"} />
+        </div>
 
-  const active = tasks.filter((t) => (ACTIVE_STATUSES as readonly string[]).includes(t.status));
-  const past = tasks.filter((t) => !(ACTIVE_STATUSES as readonly string[]).includes(t.status));
-  const needsAction = tasks.filter(
-    (t) => (t.status === "OPEN" && t._count.quotes > 0) || t.status === "ASSIGNED" || (t.status === "IN_PROGRESS" && t.taskerCompletedAt),
-  );
+        <div className="mt-8 grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
+          <section className="min-w-0 rounded-3xl border border-slate-200 bg-white shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-6 py-5">
+              <div>
+                <h2 className="text-lg font-bold text-slate-950">Recent applications</h2>
+                <p className="mt-1 text-sm text-slate-500">Stay up to date on the roles you’ve applied for.</p>
+              </div>
+              <Link href="/jobs" className="text-sm font-semibold text-emerald-700 hover:text-emerald-900">Browse jobs →</Link>
+            </div>
+            {applications.length === 0 ? (
+              <div className="p-5">
+                <EmptyState title="Your next opportunity starts here" description="Search open roles and apply when you find a good fit." href="/jobs" cta="Explore jobs" />
+              </div>
+            ) : (
+              <ul className="divide-y divide-slate-100">
+                {applications.map((application) => (
+                  <li key={application.id} className="flex flex-wrap items-center justify-between gap-4 px-6 py-5">
+                    <div className="min-w-0">
+                      <Link href={`/jobs/${application.jobId}`} className="font-semibold text-slate-900 hover:text-emerald-700">{application.job.title}</Link>
+                      <p className="mt-1 text-sm text-slate-600">{application.job.employer.employerProfile?.companyName ?? application.job.employer.fullName} · {application.job.city}</p>
+                      <p className="mt-1 text-xs text-slate-500">Applied {formatDate(application.createdAt)}</p>
+                    </div>
+                    <Badge tone={statusTone(application.status)}>{application.status.toLowerCase().replace("_", " ")}</Badge>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
 
-  return (
-    <main className="mx-auto max-w-7xl px-6 py-10">
-      <PageHeader
-        eyebrow={user.businessName ?? "Customer dashboard"}
-        title={`Assalam-o-Alaikum, ${user.fullName.split(" ")[0]}`}
-        action={
-          <Link href="/tasks/new" className="rounded-full bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500">
-            Post a task
-          </Link>
-        }
-      />
+          <aside className="space-y-5">
+            <Card className="border-emerald-100 bg-gradient-to-br from-emerald-50 to-white">
+              <p className="text-sm font-semibold text-emerald-800">Career profile</p>
+              <h2 className="mt-2 text-lg font-bold text-slate-950">{profileComplete ? "Your profile is ready to go" : "Make your profile stand out"}</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-600">
+                {profileComplete
+                  ? profile?.isPublic ? "Employers can discover your profile." : "Your details are private. Choose if you want employers to find you."
+                  : "Add your headline, experience, and skills to make a stronger first impression."}
+              </p>
+              <Link href="/profile" className="mt-4 inline-flex rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700">
+                {profileComplete ? "Manage profile" : "Complete profile"}
+              </Link>
+            </Card>
+            <Card>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Your plan</p>
+                  <h2 className="mt-1 text-xl font-bold text-slate-950">{hasPro ? "Candidate Pro" : "Free"}</h2>
+                </div>
+                <Badge tone={hasPro ? "green" : subscription?.status === "REQUESTED" ? "amber" : "slate"}>
+                  {hasPro ? "Active" : subscription?.status === "REQUESTED" ? "Pending" : "Current"}
+                </Badge>
+              </div>
+              <p className="mt-3 text-sm leading-6 text-slate-600">
+                {hasPro ? "Apply to as many roles as you like." : `${Math.max(0, 3 - thisMonthCount)} free application${3 - thisMonthCount === 1 ? "" : "s"} remaining this month.`}
+              </p>
+              {!hasPro && subscription?.status !== "REQUESTED" ? (
+                <Link href="/pricing" className="mt-4 inline-flex text-sm font-semibold text-emerald-700">Explore Candidate Pro →</Link>
+              ) : null}
+            </Card>
+          </aside>
+        </div>
+      </main>
+    );
+  }
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatTile label="Active tasks" value={String(active.length)} />
-        <StatTile label="Needs your action" value={String(needsAction.length)} />
-        <StatTile label="Completed" value={String(tasks.filter((t) => t.status === "COMPLETED").length)} />
-        <StatTile label="Total spent" value={formatPKR(spend._sum.amount ?? 0)} />
-      </div>
-
-      {needsAction.length > 0 ? (
-        <Card className="mt-8 border-amber-200 bg-amber-50/50">
-          <h2 className="font-bold text-slate-900">Needs your attention</h2>
-          <ul className="mt-3 space-y-2 text-sm">
-            {needsAction.map((t) => (
-              <li key={t.id} className="flex flex-wrap items-center justify-between gap-2">
-                <Link href={`/tasks/${t.id}`} className="font-medium text-slate-900 hover:underline">
-                  {t.title}
-                </Link>
-                <span className="text-amber-800">
-                  {t.status === "OPEN"
-                    ? `${t._count.quotes} quote${t._count.quotes === 1 ? "" : "s"} to review`
-                    : t.status === "ASSIGNED"
-                      ? "Fund escrow to start"
-                      : "Confirm completion"}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </Card>
-      ) : null}
-
-      <section className="mt-10">
-        <h2 className="mb-4 text-xl font-bold text-slate-900">Active tasks</h2>
-        {active.length === 0 ? (
-          <EmptyState title="No active tasks" description="Post a task and verified taskers will start quoting." href="/tasks/new" cta="Post a task" />
-        ) : (
-          <TaskTable
-            rows={active.map((t) => ({
-              id: t.id,
-              title: t.title,
-              status: t.status,
-              meta: t.tasker ? (t.tasker.businessName ?? t.tasker.fullName) : `${t._count.quotes} quotes`,
-              amount: t.escrowTransaction ? formatPKR(t.escrowTransaction.amount) : formatBudget(t.budgetMin, t.budgetMax),
-              date: t.updatedAt,
-            }))}
-          />
-        )}
-      </section>
-
-      {past.length > 0 ? (
-        <section className="mt-10">
-          <h2 className="mb-4 text-xl font-bold text-slate-900">History</h2>
-          <TaskTable
-            rows={past.map((t) => ({
-              id: t.id,
-              title: t.title,
-              status: t.status,
-              meta: t.tasker ? (t.tasker.businessName ?? t.tasker.fullName) : "—",
-              amount: t.escrowTransaction ? formatPKR(t.escrowTransaction.amount) : "—",
-              date: t.updatedAt,
-            }))}
-          />
-        </section>
-      ) : null}
-    </main>
-  );
-}
-
-async function TaskerDashboard({ user }: { user: CurrentUser }) {
-  const profile = user.taskerProfile;
-  const [jobs, quotes, payouts, recommended] = await Promise.all([
-    prisma.task.findMany({
-      where: { taskerId: user.id },
-      orderBy: { updatedAt: "desc" },
-      include: { escrowTransaction: { select: { netAmount: true, status: true } } },
-    }),
-    prisma.quote.findMany({
-      where: { taskerId: user.id, status: { in: ["ACTIVE", "REJECTED", "WITHDRAWN"] } },
+  const [profile, jobs, applications, activeJobs] = await Promise.all([
+    prisma.employerProfile.findUnique({ where: { userId: user.id } }),
+    prisma.job.findMany({ where: { employerId: user.id }, orderBy: { createdAt: "desc" }, take: 20, include: { _count: { select: { applications: true } } } }),
+    prisma.jobApplication.findMany({
+      where: { employerId: user.id },
       orderBy: { createdAt: "desc" },
       take: 20,
-      include: { task: { select: { id: true, title: true, city: true, status: true } } },
+      include: { job: { select: { id: true, title: true } }, candidate: { select: { fullName: true, candidateProfile: { select: { headline: true } } } } },
     }),
-    prisma.payout.findMany({
-      where: { taskerId: user.id },
-      orderBy: { createdAt: "desc" },
-      include: { escrowTransaction: { select: { task: { select: { id: true, title: true } } } } },
-    }),
-    prisma.task.findMany({
-      where: {
-        status: "OPEN",
-        quotes: { none: { taskerId: user.id } },
-        ...(profile?.categories.length ? { category: { in: profile.categories } } : {}),
-        ...(profile?.serviceAreas.length ? { city: { in: [...profile.serviceAreas, "Remote"] } } : {}),
-      },
-      orderBy: { createdAt: "desc" },
-      take: 5,
+    prisma.job.count({
+      where: { employerId: user.id, status: "OPEN", OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] },
     }),
   ]);
-
-  const earned = payouts.reduce((sum, p) => sum + p.netAmount, 0);
-  const pendingPayout = payouts.filter((p) => p.status !== "PAID").reduce((sum, p) => sum + p.netAmount, 0);
-  const activeJobs = jobs.filter((j) => (ACTIVE_STATUSES as readonly string[]).includes(j.status));
-  const pastJobs = jobs.filter((j) => !(ACTIVE_STATUSES as readonly string[]).includes(j.status));
+  const hasGrowth = subscription?.status === "ACTIVE" && subscription.currentPeriodEnd && subscription.currentPeriodEnd > new Date();
+  const pendingReview = applications.filter((item) => item.status === "SUBMITTED").length;
+  const companyComplete = Boolean(profile?.companyName && profile.industry && profile.description);
 
   return (
-    <main className="mx-auto max-w-7xl px-6 py-10">
+    <main className="mx-auto max-w-7xl px-6 py-8">
       <PageHeader
-        eyebrow="Tasker dashboard"
-        title={`Assalam-o-Alaikum, ${user.fullName.split(" ")[0]}`}
-        action={
-          <Link href="/tasks" className="rounded-full bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500">
-            Find work
-          </Link>
-        }
+        eyebrow="Hiring workspace"
+        title={`Welcome, ${user.businessName ?? user.fullName}`}
+        description="Manage your open roles, review applicants, and keep your hiring moving."
+        action={<Link href="/jobs/new" className="rounded-full bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500">Post a job</Link>}
       />
-
-      {!profile?.ntin ? (
-        <Card className="mb-8 border-amber-200 bg-amber-50">
-          <h2 className="font-bold text-amber-900">Add your NTN to start quoting</h2>
-          <p className="mt-1 text-sm text-amber-800">FBR rules require every marketplace seller to have a verified NTN before receiving payments.</p>
-          <Link href="/profile" className="mt-3 inline-flex rounded-full bg-amber-600 px-4 py-2 text-sm font-semibold text-white">
-            Complete profile
-          </Link>
-        </Card>
-      ) : !profile.ntinVerified ? (
-        <Card className="mb-8 border-sky-200 bg-sky-50">
-          <h2 className="font-bold text-sky-900">NTN verification in progress</h2>
-          <p className="mt-1 text-sm text-sky-800">We&apos;re checking NTN {profile.ntin}. You&apos;ll be able to quote once it&apos;s approved.</p>
-        </Card>
-      ) : null}
-
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatTile label="Active jobs" value={String(activeJobs.length)} />
-        <StatTile label="Pending quotes" value={String(quotes.filter((q) => q.status === "ACTIVE").length)} />
-        <StatTile label="Total earned (net)" value={formatPKR(earned)} />
-        <StatTile label="Awaiting payout" value={formatPKR(pendingPayout)} />
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatTile label="Active jobs" value={String(activeJobs)} hint={hasGrowth ? "Up to 5 with Growth" : "1 included on Free"} />
+        <StatTile label="Applications" value={String(applications.length)} hint="Across your latest roles" />
+        <StatTile label="Needs review" value={String(pendingReview)} hint="New applications" />
+        <StatTile label="Membership" value={hasGrowth ? "Growth" : subscription?.status === "REQUESTED" ? "Pending" : "Free"} hint={hasGrowth ? "Active plan" : "Upgrade to grow"} />
       </div>
-
-      <div className="mt-10 grid gap-8 lg:grid-cols-[1.5fr_1fr]">
-        <div className="space-y-10">
-          <section>
-            <h2 className="mb-4 text-xl font-bold text-slate-900">Active jobs</h2>
-            {activeJobs.length === 0 ? (
-              <EmptyState title="No active jobs" description="When a customer accepts your quote, the job appears here." />
-            ) : (
-              <TaskTable
-                rows={activeJobs.map((j) => ({
-                  id: j.id,
-                  title: j.title,
-                  status: j.status,
-                  meta: j.taskerCompletedAt ? "Awaiting confirmation" : j.city,
-                  amount: j.escrowTransaction ? `${formatPKR(j.escrowTransaction.netAmount)} net` : "—",
-                  date: j.updatedAt,
-                }))}
-              />
-            )}
-          </section>
-
-          <section>
-            <h2 className="mb-4 text-xl font-bold text-slate-900">My quotes</h2>
-            {quotes.length === 0 ? (
-              <EmptyState title="No quotes yet" description="Browse open tasks in your categories and send your first quote." href="/tasks" cta="Browse tasks" />
-            ) : (
-              <div className="overflow-x-auto rounded-3xl border border-slate-200 bg-white shadow-sm">
-                <table className="w-full text-left text-sm">
-                  <thead className="bg-slate-50 text-xs uppercase tracking-[0.1em] text-slate-500">
-                    <tr>
-                      <th className="px-5 py-3">Task</th>
-                      <th className="px-5 py-3">Quote</th>
-                      <th className="px-5 py-3">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {quotes.map((q) => (
-                      <tr key={q.id}>
-                        <td className="px-5 py-3">
-                          <Link href={`/tasks/${q.task.id}`} className="font-medium text-slate-900 hover:underline">
-                            {q.task.title}
-                          </Link>
-                          <p className="text-xs text-slate-500">{q.task.city}</p>
-                        </td>
-                        <td className="px-5 py-3 font-semibold">{formatPKR(q.amountPKR)}</td>
-                        <td className="px-5 py-3">
-                          <Badge tone={quoteStatusMeta[q.status].tone}>{quoteStatusMeta[q.status].label}</Badge>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+      <div className="mt-8 grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="space-y-6">
+          <section className="min-w-0 rounded-3xl border border-slate-200 bg-white shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-6 py-5">
+              <div>
+                <h2 className="text-lg font-bold text-slate-950">Your job listings</h2>
+                <p className="mt-1 text-sm text-slate-500">Track listing activity and application volume.</p>
               </div>
-            )}
-          </section>
-
-          {pastJobs.length > 0 ? (
-            <section>
-              <h2 className="mb-4 text-xl font-bold text-slate-900">Job history</h2>
-              <TaskTable
-                rows={pastJobs.map((j) => ({
-                  id: j.id,
-                  title: j.title,
-                  status: j.status,
-                  meta: j.city,
-                  amount: j.escrowTransaction ? `${formatPKR(j.escrowTransaction.netAmount)} net` : "—",
-                  date: j.completedAt ?? j.updatedAt,
-                }))}
-              />
-            </section>
-          ) : null}
-        </div>
-
-        <div className="space-y-8">
-          <Card>
-            <h2 className="font-bold text-slate-900">Recommended for you</h2>
-            {recommended.length === 0 ? (
-              <p className="mt-2 text-sm text-slate-500">No new tasks match your categories and cities right now.</p>
+              <Link href="/jobs/new" className="text-sm font-semibold text-emerald-700 hover:text-emerald-900">+ Post a job</Link>
+            </div>
+            {jobs.length === 0 ? (
+              <div className="p-5">
+                <EmptyState title="Start your hiring journey" description="Publish your first role to reach candidates and receive applications." href="/jobs/new" cta="Create a job listing" />
+              </div>
             ) : (
-              <ul className="mt-3 divide-y divide-slate-100">
-                {recommended.map((t) => (
-                  <li key={t.id} className="py-3">
-                    <Link href={`/tasks/${t.id}`} className="font-medium text-slate-900 hover:underline">
-                      {t.title}
-                    </Link>
-                    <p className="text-xs text-slate-500">
-                      {t.category} · {t.city} · {formatBudget(t.budgetMin, t.budgetMax)}
-                    </p>
+              <ul className="divide-y divide-slate-100">
+                {jobs.map((job) => (
+                  <li key={job.id} className="flex flex-wrap items-center justify-between gap-4 px-6 py-5">
+                    <div className="min-w-0">
+                      <Link href={`/jobs/${job.id}`} className="font-semibold text-slate-900 hover:text-emerald-700">{job.title}</Link>
+                      <p className="mt-1 text-sm text-slate-600">{job.city} · {job._count.applications} applications</p>
+                      <p className="mt-1 text-xs text-slate-500">Posted {formatDate(job.createdAt)}</p>
+                    </div>
+                    <Badge tone={job.status === "OPEN" && (!job.expiresAt || job.expiresAt > new Date()) ? "green" : "slate"}>
+                      {job.status === "OPEN" && job.expiresAt && job.expiresAt <= new Date() ? "expired" : job.status.toLowerCase()}
+                    </Badge>
                   </li>
                 ))}
               </ul>
             )}
-          </Card>
+          </section>
 
-          <Card>
-            <h2 className="font-bold text-slate-900">Payouts</h2>
-            {payouts.length === 0 ? (
-              <p className="mt-2 text-sm text-slate-500">Released escrow payments show up here.</p>
+          <section className="rounded-3xl border border-slate-200 bg-white shadow-sm">
+            <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-6 py-5">
+              <div>
+                <h2 className="text-lg font-bold text-slate-950">Recent applicants</h2>
+                <p className="mt-1 text-sm text-slate-500">Review candidates who have applied to your jobs.</p>
+              </div>
+              {pendingReview ? <Badge tone="amber">{pendingReview} new</Badge> : null}
+            </div>
+            {applications.length === 0 ? (
+              <p className="px-6 py-8 text-sm text-slate-600">Applicants will appear here as candidates apply to your open roles.</p>
             ) : (
-              <ul className="mt-3 divide-y divide-slate-100 text-sm">
-                {payouts.map((p) => (
-                  <li key={p.id} className="flex items-center justify-between gap-3 py-3">
-                    <div>
-                      <p className="font-medium text-slate-900">{p.escrowTransaction.task.title}</p>
-                      <p className="text-xs text-slate-500">
-                        {formatPKR(p.grossAmount)} − {formatPKR(p.commissionAmount)} fee · {formatDate(p.paidAt ?? p.createdAt)}
+              <ul className="divide-y divide-slate-100">
+                {applications.slice(0, 8).map((application) => (
+                  <li key={application.id} className="flex flex-wrap items-center justify-between gap-4 px-6 py-5">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-slate-900">{application.candidate.fullName}</p>
+                      <p className="mt-1 text-sm text-slate-600">{application.candidate.candidateProfile?.headline ?? "Candidate"}</p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        <Link className="text-emerald-700 hover:underline" href={`/jobs/${application.job.id}`}>{application.job.title}</Link> · {formatDate(application.createdAt)}
                       </p>
                     </div>
-                    <div className="text-right">
-                      <p className="font-semibold">{formatPKR(p.netAmount)}</p>
-                      <Badge tone={payoutStatusMeta[p.status].tone}>{payoutStatusMeta[p.status].label}</Badge>
-                    </div>
+                    <Link href={`/jobs/${application.job.id}`} className="text-sm font-semibold text-emerald-700">Review →</Link>
                   </li>
                 ))}
               </ul>
             )}
-          </Card>
+          </section>
         </div>
+
+        <aside className="space-y-5">
+          <Card className={companyComplete ? "border-emerald-100 bg-gradient-to-br from-emerald-50 to-white" : "border-amber-200 bg-amber-50"}>
+            <p className="text-sm font-semibold text-slate-600">Company profile</p>
+            <h2 className="mt-2 text-lg font-bold text-slate-950">{companyComplete ? "Your organization is ready" : "Complete your organization profile"}</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              {companyComplete ? "A clear company profile helps candidates understand who is hiring." : "Add your industry and company introduction to build candidate confidence."}
+            </p>
+            <Link href="/profile" className="mt-4 inline-flex rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700">
+              {companyComplete ? "Manage company profile" : "Complete profile"}
+            </Link>
+          </Card>
+          <Card>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Hiring plan</p>
+                <h2 className="mt-1 text-xl font-bold text-slate-950">{hasGrowth ? "Employer Growth" : "Free"}</h2>
+              </div>
+              <Badge tone={hasGrowth ? "green" : subscription?.status === "REQUESTED" ? "amber" : "slate"}>
+                {hasGrowth ? "Active" : subscription?.status === "REQUESTED" ? "Pending" : "Current"}
+              </Badge>
+            </div>
+            <p className="mt-3 text-sm leading-6 text-slate-600">
+              {hasGrowth ? `${Math.max(0, 5 - activeJobs)} active job slots available.` : activeJobs ? "Your free active job slot is in use." : "One active job listing is included."}
+            </p>
+            <Link href="/pricing" className="mt-4 inline-flex text-sm font-semibold text-emerald-700">View employer plans →</Link>
+          </Card>
+          <Card>
+            <p className="text-sm font-semibold text-slate-950">Hiring shortcuts</p>
+            <div className="mt-3 grid gap-2">
+              <Link href="/jobs/new" className="rounded-xl bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700 hover:bg-emerald-50">Create a job listing →</Link>
+              <Link href="/candidates" className="rounded-xl bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700 hover:bg-emerald-50">Search candidate profiles →</Link>
+            </div>
+          </Card>
+        </aside>
       </div>
     </main>
-  );
-}
-
-function TaskTable({
-  rows,
-}: {
-  rows: { id: string; title: string; status: keyof typeof taskStatusMeta; meta: string; amount: string; date: Date }[];
-}) {
-  return (
-    <div className="overflow-x-auto rounded-3xl border border-slate-200 bg-white shadow-sm">
-      <table className="w-full text-left text-sm">
-        <thead className="bg-slate-50 text-xs uppercase tracking-[0.1em] text-slate-500">
-          <tr>
-            <th className="px-5 py-3">Task</th>
-            <th className="px-5 py-3">Status</th>
-            <th className="px-5 py-3">Amount</th>
-            <th className="px-5 py-3">Updated</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-slate-100">
-          {rows.map((row) => (
-            <tr key={row.id}>
-              <td className="px-5 py-3">
-                <Link href={`/tasks/${row.id}`} className="font-medium text-slate-900 hover:underline">
-                  {row.title}
-                </Link>
-                <p className="text-xs text-slate-500">{row.meta}</p>
-              </td>
-              <td className="px-5 py-3">
-                <Badge tone={taskStatusMeta[row.status].tone}>{taskStatusMeta[row.status].label}</Badge>
-              </td>
-              <td className="whitespace-nowrap px-5 py-3 font-semibold">{row.amount}</td>
-              <td className="whitespace-nowrap px-5 py-3 text-slate-500">{formatDate(row.date)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
   );
 }

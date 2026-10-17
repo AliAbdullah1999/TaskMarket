@@ -21,6 +21,12 @@ model User {
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
   taskerProfile    TaskerProfile?
+  candidateProfile CandidateProfile?
+  employerProfile  EmployerProfile?
+  postedJobs       Job[]             @relation("EmployerJobs")
+  applications     JobApplication[]  @relation("CandidateApplications")
+  reviewedApps     JobApplication[]  @relation("EmployerReviews")
+  subscriptions    Subscription[]
   customerTasks    Task[]            @relation("CustomerTasks")
   assignedTasks    Task[]            @relation("TaskerAssignments")
   quotes           Quote[]
@@ -49,6 +55,89 @@ model TaskerProfile {
   status                ProfileStatus    @default(ACTIVE)
   createdAt             DateTime         @default(now())
   updatedAt             DateTime         @updatedAt
+}
+
+model CandidateProfile {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  headline        String?
+  summary         String?
+  skills          String[]
+  experienceYears Int?
+  isPublic        Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model EmployerProfile {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  companyName String
+  website     String?
+  industry    String?
+  description String?
+  verified    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Job {
+  id             String             @id @default(cuid())
+  employerId     String
+  employer       User               @relation("EmployerJobs", fields: [employerId], references: [id], onDelete: Cascade)
+  title          String
+  description    String
+  requirements   String?
+  category       String
+  city           String
+  employmentType EmploymentType
+  workplaceType  WorkplaceType
+  salaryMin      Int?
+  salaryMax      Int?
+  status         JobStatus          @default(OPEN)
+  expiresAt      DateTime?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  applications   JobApplication[]
+
+  @@index([status, city, category, createdAt])
+  @@index([employerId, status])
+}
+
+model JobApplication {
+  id           String            @id @default(cuid())
+  jobId        String
+  job          Job               @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  candidateId  String
+  candidate    User              @relation("CandidateApplications", fields: [candidateId], references: [id], onDelete: Cascade)
+  employerId   String
+  employer     User              @relation("EmployerReviews", fields: [employerId], references: [id], onDelete: Cascade)
+  coverLetter  String?
+  status       ApplicationStatus @default(SUBMITTED)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  @@unique([jobId, candidateId])
+  @@index([candidateId, createdAt])
+  @@index([employerId, status, createdAt])
+}
+
+model Subscription {
+  id              String             @id @default(cuid())
+  userId          String
+  user            User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan            SubscriptionPlan
+  status          SubscriptionStatus @default(REQUESTED)
+  paymentReference String?
+  currentPeriodStart DateTime?
+  currentPeriodEnd DateTime?
+  reviewedAt      DateTime?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  @@index([userId, status, currentPeriodEnd])
 }
 
 model Task {
@@ -194,7 +283,50 @@ enum UserType {
   CUSTOMER
   TASKER
   BUSINESS
+  CANDIDATE
+  EMPLOYER
   ADMIN
+}
+
+enum EmploymentType {
+  FULL_TIME
+  PART_TIME
+  CONTRACT
+  INTERNSHIP
+  TEMPORARY
+}
+
+enum WorkplaceType {
+  ONSITE
+  HYBRID
+  REMOTE
+}
+
+enum JobStatus {
+  OPEN
+  CLOSED
+  ARCHIVED
+}
+
+enum ApplicationStatus {
+  SUBMITTED
+  REVIEWING
+  SHORTLISTED
+  REJECTED
+  HIRED
+  WITHDRAWN
+}
+
+enum SubscriptionPlan {
+  CANDIDATE_PRO
+  EMPLOYER_GROWTH
+}
+
+enum SubscriptionStatus {
+  REQUESTED
+  ACTIVE
+  EXPIRED
+  CANCELLED
 }
 
 enum UserStatus {

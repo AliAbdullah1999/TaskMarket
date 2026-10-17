@@ -8,7 +8,7 @@ import { CITIES } from "@/lib/constants";
 import { prisma } from "@/lib/db";
 import { hashPassword, verifyPassword } from "@/lib/password";
 
-const SIGNUP_ROLES = ["CUSTOMER", "BUSINESS", "TASKER"] as const;
+const SIGNUP_ROLES = ["CANDIDATE", "EMPLOYER"] as const;
 
 export async function signup(_prev: ActionState, formData: FormData): Promise<ActionState> {
   let destination = "/dashboard";
@@ -23,7 +23,7 @@ export async function signup(_prev: ActionState, formData: FormData): Promise<Ac
 
     if (fullName.length < 2) fail("Please enter your full name.");
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) fail("Please enter a valid email address.");
-    if (!SIGNUP_ROLES.includes(userType)) fail("Choose how you want to use the marketplace.");
+    if (!SIGNUP_ROLES.includes(userType)) fail("Choose whether you are joining as a candidate or employer.");
     if (!(CITIES as readonly string[]).includes(city)) fail("Choose your city.");
     if (phone && !/^(\+92|0)3\d{9}$/.test(phone.replace(/[\s-]/g, ""))) {
       fail("Enter a Pakistani mobile number like 03001234567.");
@@ -31,7 +31,7 @@ export async function signup(_prev: ActionState, formData: FormData): Promise<Ac
     if (password.length < 8 || !/[a-zA-Z]/.test(password) || !/\d/.test(password)) {
       fail("Password must be at least 8 characters and include a letter and a number.");
     }
-    if (userType === "BUSINESS" && !businessName) fail("Enter your business name.");
+    if (userType === "EMPLOYER" && !businessName) fail("Enter your company name.");
 
     try {
       const user = await prisma.user.create({
@@ -43,11 +43,12 @@ export async function signup(_prev: ActionState, formData: FormData): Promise<Ac
           userType,
           businessName: businessName || null,
           passwordHash: await hashPassword(password),
-          taskerProfile: userType === "TASKER" ? { create: { serviceAreas: [city] } } : undefined,
+          candidateProfile: userType === "CANDIDATE" ? { create: { skills: [] } } : undefined,
+          employerProfile: userType === "EMPLOYER" ? { create: { companyName: businessName } } : undefined,
         },
       });
       await createSession(user.id);
-      if (userType === "TASKER") destination = "/profile?welcome=1";
+      if (userType === "CANDIDATE") destination = "/profile?welcome=1";
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
         fail("An account with this email already exists.");

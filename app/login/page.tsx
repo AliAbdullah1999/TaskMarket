@@ -15,7 +15,7 @@ export default async function LoginPage(props: PageProps<"/login">) {
   return (
     <main className="mx-auto max-w-md px-6 py-16">
       <h1 className="text-3xl font-bold text-slate-900">Welcome back</h1>
-      <p className="mt-2 text-slate-600">Log in to manage your tasks, quotes and payments.</p>
+      <p className="mt-2 text-slate-600">Log in to manage your candidate profile, applications, or job listings.</p>
 
       <ActionForm action={login} className="mt-8 space-y-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
         <input type="hidden" name="next" value={typeof next === "string" ? next : ""} />

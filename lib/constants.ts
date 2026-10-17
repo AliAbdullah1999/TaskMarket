@@ -1,6 +1,31 @@
-export const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME ?? "TaskMarket PK";
+export const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME ?? "CareerMarket PK";
 
-/** Platform commission taken from the tasker's side of every released escrow. */
+/** Proposed monthly membership prices. Payment processing is not yet connected. */
+export const PLAN_PRICES = {
+  CANDIDATE_PRO: 1499,
+  EMPLOYER_GROWTH: 9999,
+} as const;
+
+export const FREE_APPLICATION_LIMIT = 3;
+export const FREE_ACTIVE_JOB_LIMIT = 1;
+export const GROWTH_ACTIVE_JOB_LIMIT = 5;
+
+export const JOB_CATEGORIES = [
+  "Administration",
+  "Customer Service",
+  "Design",
+  "Education",
+  "Engineering",
+  "Finance",
+  "Healthcare",
+  "Human Resources",
+  "Information Technology",
+  "Marketing",
+  "Sales",
+  "Other",
+] as const;
+
+/** Legacy marketplace settings retained for existing records and routes. */
 export const COMMISSION_PCT = 11;
 
 /** Escrow auto-releases this many hours after the tasker marks a job complete. */

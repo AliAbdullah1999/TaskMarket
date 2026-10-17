@@ -93,3 +93,38 @@ export async function setUserStatus(_prev: ActionState, formData: FormData): Pro
     return status === "SUSPENDED" ? "User suspended." : "User reactivated.";
   });
 }
+
+export async function reviewSubscription(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  return runAction(async () => {
+    await requireAdmin();
+    const subscriptionId = text(formData, "subscriptionId");
+    const decision = text(formData, "decision");
+    if (decision === "approve") {
+      const paymentReference = text(formData, "paymentReference");
+      if (paymentReference.length < 3 || paymentReference.length > 100) fail("Enter the external payment reference before approving.");
+      const updated = await prisma.subscription.updateMany({
+        where: { id: subscriptionId, status: "REQUESTED" },
+        data: {
+          status: "ACTIVE",
+          paymentReference,
+          currentPeriodStart: new Date(),
+          currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+          reviewedAt: new Date(),
+        },
+      });
+      if (!updated.count) fail("This request has already been reviewed.");
+    } else if (decision === "reject") {
+      const updated = await prisma.subscription.updateMany({
+        where: { id: subscriptionId, status: "REQUESTED" },
+        data: { status: "CANCELLED", reviewedAt: new Date() },
+      });
+      if (!updated.count) fail("This request has already been reviewed.");
+    } else {
+      fail("Choose a valid review decision.");
+    }
+    revalidatePath("/admin");
+    revalidatePath("/dashboard");
+    revalidatePath("/pricing");
+    return decision === "approve" ? "Membership activated for 30 days." : "Membership request rejected.";
+  });
+}
