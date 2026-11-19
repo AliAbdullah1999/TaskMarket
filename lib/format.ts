@@ -91,3 +91,53 @@ export function initials(name: string) {
     .map((part) => part[0]!.toUpperCase())
     .join("");
 }
+
+export const applicationStatusMeta: Record<string, { label: string; tone: Tone }> = {
+  SUBMITTED: { label: "Applied", tone: "slate" },
+  REVIEWING: { label: "Under review", tone: "blue" },
+  SHORTLISTED: { label: "Shortlisted", tone: "green" },
+  HIRED: { label: "Hired", tone: "green" },
+  REJECTED: { label: "Not selected", tone: "red" },
+  WITHDRAWN: { label: "Withdrawn", tone: "slate" },
+};
+
+export const membershipStatusMeta: Record<string, { label: string; tone: Tone }> = {
+  REQUESTED: { label: "Pending review", tone: "amber" },
+  ACTIVE: { label: "Active", tone: "green" },
+  EXPIRED: { label: "Expired", tone: "slate" },
+  CANCELLED: { label: "Cancelled", tone: "slate" },
+  REJECTED: { label: "Rejected", tone: "red" },
+};
+
+export const planLabels: Record<string, string> = {
+  CANDIDATE_PRO: "Candidate Pro",
+  EMPLOYER_GROWTH: "Employer Growth",
+};
+
+export const employmentLabels: Record<string, string> = {
+  FULL_TIME: "Full-time",
+  PART_TIME: "Part-time",
+  CONTRACT: "Contract",
+  INTERNSHIP: "Internship",
+  TEMPORARY: "Temporary",
+};
+
+export const workplaceLabels: Record<string, string> = {
+  ONSITE: "On-site",
+  HYBRID: "Hybrid",
+  REMOTE: "Remote",
+};
+
+/** Display status of a job, taking expiry into account. */
+export function jobStatusMeta(job: { status: string; expiresAt: Date | null }, now = new Date()): { label: string; tone: Tone } {
+  if (job.status === "OPEN" && job.expiresAt && job.expiresAt <= now) return { label: "Expired", tone: "slate" };
+  if (job.status === "OPEN") return { label: "Open", tone: "green" };
+  if (job.status === "CLOSED") return { label: "Closed", tone: "slate" };
+  return { label: "Archived", tone: "slate" };
+}
+
+export function formatSalary(min: number | null, max: number | null, suffix = " / month") {
+  if (!min && !max) return null;
+  if (min && max) return `${formatPKR(min)} – ${max.toLocaleString("en-PK")}${suffix}`;
+  return min ? `From ${formatPKR(min)}${suffix}` : `Up to ${formatPKR(max)}${suffix}`;
+}

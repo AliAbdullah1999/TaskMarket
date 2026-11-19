@@ -9,7 +9,7 @@ export function LegacyAccountMigration({ user }: { user: CurrentUser }) {
       <PageHeader
         eyebrow="Account update"
         title={`Welcome back, ${user.fullName.split(" ")[0]}`}
-        description="CareerMarket has moved from local services to jobs and recruitment. Choose how you want to use your existing account to open your dashboard."
+        description="Connect HR has moved from local services to jobs and recruitment. Choose how you want to use your existing account to open your dashboard."
       />
       <Card className="mb-6 border-sky-200 bg-sky-50">
         <h2 className="font-semibold text-sky-950">Your account and previous records are preserved</h2>

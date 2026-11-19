@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getMonthlySellerSummary } from "@/lib/fbr-report";
+import { legacyDisabledResponse, legacyTaskMarketEnabled } from "@/lib/legacy";
 
 function csvCell(value: string | number | null) {
   const text = value == null ? "" : String(value);
@@ -9,6 +10,7 @@ function csvCell(value: string | number | null) {
 }
 
 export async function GET(request: NextRequest) {
+  if (!legacyTaskMarketEnabled()) return legacyDisabledResponse();
   const user = await getCurrentUser();
   if (user?.userType !== "ADMIN") {
     return new Response("Forbidden", { status: 403 });

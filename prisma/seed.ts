@@ -19,6 +19,7 @@ async function main() {
   if (reset) {
     console.log("Resetting all application data…");
     await prisma.$transaction([
+      prisma.adminAuditLog.deleteMany(),
       prisma.subscription.deleteMany(),
       prisma.jobApplication.deleteMany(),
       prisma.job.deleteMany(),
@@ -54,6 +55,7 @@ async function main() {
           headline: "Product designer with 4 years of fintech experience",
           summary: "UX and product designer focused on accessible digital products, research, and design systems.",
           skills: ["Product Design", "Figma", "User Research", "Prototyping"],
+          skillsNormalized: ["product design", "figma", "user research", "prototyping"],
           experienceYears: 4,
           isPublic: true,
         },

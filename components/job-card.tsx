@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { formatDate, formatPKR } from "@/lib/format";
+import { employmentLabels, formatDate, formatSalary, workplaceLabels } from "@/lib/format";
 
 type JobCardData = {
   id: string;
@@ -18,43 +18,32 @@ type JobCardData = {
   _count?: { applications: number };
 };
 
-const employmentLabels: Record<string, string> = {
-  FULL_TIME: "Full-time",
-  PART_TIME: "Part-time",
-  CONTRACT: "Contract",
-  INTERNSHIP: "Internship",
-  TEMPORARY: "Temporary",
-};
-
 export function JobCard({ job }: { job: JobCardData }) {
-  const salary =
-    job.salaryMin || job.salaryMax
-      ? `${job.salaryMin ? formatPKR(job.salaryMin) : "—"}${job.salaryMax ? ` – ${formatPKR(job.salaryMax)}` : ""} / month`
-      : "Salary not listed";
+  const salary = formatSalary(job.salaryMin, job.salaryMax) ?? "Salary not listed";
 
   return (
-    <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-200">
+    <article className="group rounded-[22px] border border-[#e7eae5] bg-white p-5 shadow-[0_5px_20px_rgba(23,35,31,0.04)] transition hover:-translate-y-1 hover:border-emerald-200 hover:shadow-[0_14px_36px_rgba(23,35,31,0.09)] sm:p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">{job.category}</p>
-          <h2 className="mt-2 text-lg font-bold text-slate-900">
-            <Link href={`/jobs/${job.id}`} className="hover:text-emerald-700">
+          <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-emerald-800">{job.category}</p>
+          <h2 className="mt-2 text-lg font-bold tracking-tight text-slate-900">
+            <Link href={`/jobs/${job.id}`} className="group-hover:text-emerald-800">
               {job.title}
             </Link>
           </h2>
         </div>
-        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
+        <span className="rounded-full bg-[#f3f5f1] px-3 py-1.5 text-xs font-semibold text-slate-600">
           {employmentLabels[job.employmentType] ?? job.employmentType}
         </span>
       </div>
-      <p className="mt-3 text-sm font-medium text-slate-800">{job.employer.employerProfile?.companyName ?? job.employer.fullName}</p>
+      <p className="mt-4 text-sm font-semibold text-slate-800">{job.employer.employerProfile?.companyName ?? job.employer.fullName}</p>
       <div className="mt-4 flex flex-wrap gap-x-4 gap-y-2 text-sm text-slate-600">
-        <span>{job.city} · {job.workplaceType.toLowerCase()}</span>
-        <span>{salary}</span>
+        <span>{job.city} · {workplaceLabels[job.workplaceType] ?? job.workplaceType}</span>
+        <span className={job.salaryMin || job.salaryMax ? "font-medium text-slate-800" : "text-slate-500"}>{salary}</span>
       </div>
       <div className="mt-5 flex items-center justify-between border-t border-slate-100 pt-4 text-xs text-slate-500">
         <span>Posted {formatDate(job.createdAt)}</span>
-        {job._count ? <span>{job._count.applications} applicants</span> : null}
+        {job._count ? <span>{job._count.applications} {job._count.applications === 1 ? "applicant" : "applicants"}</span> : null}
       </div>
     </article>
   );

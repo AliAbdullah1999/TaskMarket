@@ -12,7 +12,10 @@
     "prisma:studio": "prisma studio",
     "prisma:seed": "tsx prisma/seed.ts",
     "typecheck": "next typegen && tsc --noEmit",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "test": "node scripts/test.mjs",
+    "prisma:migrate": "prisma migrate deploy",
+    "prisma:migrate:dev": "prisma migrate dev"
   },
   "dependencies": {
     "@prisma/client": "^6.13.0",

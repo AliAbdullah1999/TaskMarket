@@ -1,13 +1,15 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { applyToJob, closeJob, updateApplicationStatus } from "@/app/actions/jobs";
-import { ActionForm, SubmitButton } from "@/components/action-form";
-import { Badge, Card, Field, inputClass } from "@/components/ui";
+import { applyToJob, closeJob } from "@/app/actions/jobs";
+import { ActionForm, ConfirmSubmitButton, SubmitButton } from "@/components/action-form";
+import { APPLICANT_SELECT, ApplicantList } from "@/components/applicant-list";
+import { Badge, Card, Field, Notice, buttonClass, inputClass } from "@/components/ui";
 import { getCurrentUser } from "@/lib/auth";
 import { FREE_APPLICATION_LIMIT } from "@/lib/constants";
 import { prisma } from "@/lib/db";
-import { formatDate, formatPKR } from "@/lib/format";
+import { getCandidateApplicationAllowance, isJobAcceptingApplications } from "@/lib/entitlements";
+import { applicationStatusMeta, employmentLabels, formatDate, formatSalary, jobStatusMeta, workplaceLabels } from "@/lib/format";
 
 export async function generateMetadata(props: PageProps<"/jobs/[id]">): Promise<Metadata> {
   const { id } = await props.params;
@@ -15,8 +17,14 @@ export async function generateMetadata(props: PageProps<"/jobs/[id]">): Promise<
   return { title: job?.title ?? "Job" };
 }
 
+const notices: Record<string, string> = {
+  published: "Your job is live. It will accept applications for 30 days unless you close it sooner.",
+  updated: "Job listing updated.",
+};
+
 export default async function JobDetailPage(props: PageProps<"/jobs/[id]">) {
   const { id } = await props.params;
+  const { notice } = await props.searchParams;
   const [user, job] = await Promise.all([
     getCurrentUser(),
     prisma.job.findUnique({
@@ -29,50 +37,53 @@ export default async function JobDetailPage(props: PageProps<"/jobs/[id]">) {
   ]);
   if (!job) notFound();
 
-  const isOwner = user?.id === job.employerId;
-  const [applications, myApplication] = await Promise.all([
-    isOwner
-      ? prisma.jobApplication.findMany({
-          where: { jobId: job.id },
-          orderBy: { createdAt: "desc" },
-          include: { candidate: { select: { fullName: true, city: true, candidateProfile: true } } },
-        })
-      : Promise.resolve([]),
-    user?.userType === "CANDIDATE"
+  const now = new Date();
+  const isOwner = user?.userType === "EMPLOYER" && user.id === job.employerId;
+  const isCandidate = user?.userType === "CANDIDATE";
+  const [applications, myApplication, allowance] = await Promise.all([
+    isOwner ? prisma.jobApplication.findMany({ where: { jobId: job.id }, orderBy: { createdAt: "desc" }, select: APPLICANT_SELECT }) : null,
+    isCandidate
       ? prisma.jobApplication.findUnique({
           where: { jobId_candidateId: { jobId: job.id, candidateId: user.id } },
-          select: { id: true, createdAt: true },
+          select: { createdAt: true, updatedAt: true, status: true },
         })
-      : Promise.resolve(null),
+      : null,
+    isCandidate ? getCandidateApplicationAllowance(prisma, user.id, now) : null,
   ]);
-  const salary =
-    job.salaryMin || job.salaryMax
-      ? `${job.salaryMin ? formatPKR(job.salaryMin) : "—"}${job.salaryMax ? ` – ${formatPKR(job.salaryMax)}` : ""} per month`
-      : "Not disclosed";
-  const expired = Boolean(job.expiresAt && job.expiresAt <= new Date());
-  const open = job.status === "OPEN" && !expired;
+
+  const open = isJobAcceptingApplications(job, now);
+  const status = jobStatusMeta(job, now);
+  const salary = formatSalary(job.salaryMin, job.salaryMax, " per month") ?? "Not disclosed";
+  const company = job.employer.employerProfile?.companyName ?? job.employer.fullName;
+  const noticeText = typeof notice === "string" && isOwner ? notices[notice] : undefined;
 
   return (
-    <main className="mx-auto max-w-5xl px-6 py-10">
-      <Link href="/jobs" className="text-sm font-semibold text-emerald-700">← Browse jobs</Link>
-      <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_320px]">
-        <div className="space-y-6">
+    <main className="mx-auto max-w-5xl px-5 py-8 sm:px-6 sm:py-10">
+      <Link href={isOwner ? "/jobs/manage" : "/jobs"} className="inline-flex min-h-11 items-center text-sm font-semibold text-emerald-800 hover:text-emerald-950">
+        ← {isOwner ? "Manage jobs" : "Browse jobs"}
+      </Link>
+      {noticeText ? <Notice tone="success" className="mt-4">{noticeText}</Notice> : null}
+      <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="min-w-0 space-y-6">
           <Card>
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <Badge tone={open ? "green" : "slate"}>{open ? "Accepting applications" : "Closed"}</Badge>
+              <Badge tone={status.tone}>{open ? "Accepting applications" : status.label}</Badge>
               <span className="text-sm text-slate-500">Posted {formatDate(job.createdAt)}</span>
             </div>
-            <h1 className="mt-4 text-3xl font-black text-slate-950">{job.title}</h1>
-            <p className="mt-2 text-lg font-semibold text-slate-800">{job.employer.employerProfile?.companyName ?? job.employer.fullName}</p>
+            <h1 className="mt-4 text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl">{job.title}</h1>
+            <p className="mt-2 text-lg font-semibold text-slate-800">{company}</p>
             <div className="mt-5 flex flex-wrap gap-2 text-sm text-slate-600">
-              <span className="rounded-full bg-slate-100 px-3 py-1">{job.city}</span>
-              <span className="rounded-full bg-slate-100 px-3 py-1">{job.workplaceType.toLowerCase()}</span>
-              <span className="rounded-full bg-slate-100 px-3 py-1">{job.employmentType.replace("_", " ").toLowerCase()}</span>
-              <span className="rounded-full bg-slate-100 px-3 py-1">{job.category}</span>
+              {[job.city, workplaceLabels[job.workplaceType], employmentLabels[job.employmentType], job.category].map((tag) => (
+                <span key={tag} className="rounded-full bg-[#f3f5f1] px-3 py-1.5 text-xs font-medium">{tag}</span>
+              ))}
             </div>
-            <dl className="mt-6 grid gap-4 rounded-2xl bg-slate-50 p-4 sm:grid-cols-2">
+            <dl className="mt-6 grid gap-4 rounded-2xl border border-[#edf0eb] bg-[#f8faf7] p-4 sm:grid-cols-3">
               <div><dt className="text-xs uppercase tracking-wide text-slate-500">Monthly salary</dt><dd className="mt-1 font-semibold">{salary}</dd></div>
               <div><dt className="text-xs uppercase tracking-wide text-slate-500">Applications</dt><dd className="mt-1 font-semibold">{job._count.applications}</dd></div>
+              <div>
+                <dt className="text-xs uppercase tracking-wide text-slate-500">{open ? "Closes" : "Status"}</dt>
+                <dd className="mt-1 font-semibold">{open ? formatDate(job.expiresAt) : status.label}</dd>
+              </div>
             </dl>
             <section className="mt-8">
               <h2 className="text-lg font-bold">About the role</h2>
@@ -84,86 +95,96 @@ export default async function JobDetailPage(props: PageProps<"/jobs/[id]">) {
                 <p className="mt-3 whitespace-pre-line leading-7 text-slate-700">{job.requirements}</p>
               </section>
             ) : null}
-            {isOwner && job.status === "OPEN" ? (
-              <ActionForm action={closeJob} className="mt-8 border-t border-slate-100 pt-5">
-                <input type="hidden" name="jobId" value={job.id} />
-                <SubmitButton variant="secondary">Close this job listing</SubmitButton>
-              </ActionForm>
+            {isOwner ? (
+              <div className="mt-8 flex flex-wrap items-center gap-3 border-t border-slate-100 pt-5">
+                {job.status !== "ARCHIVED" ? <Link href={`/jobs/${job.id}/edit`} className={buttonClass.secondary}>Edit listing</Link> : null}
+                {job.status === "OPEN" ? (
+                  <ActionForm action={closeJob}>
+                    <input type="hidden" name="jobId" value={job.id} />
+                    <ConfirmSubmitButton
+                      title="Close this job listing?"
+                      message="Candidates will no longer be able to apply. Existing applications stay available for review. This cannot be undone."
+                      confirmLabel="Close listing"
+                    >
+                      Close listing
+                    </ConfirmSubmitButton>
+                  </ActionForm>
+                ) : null}
+              </div>
             ) : null}
           </Card>
 
-          {isOwner ? (
-            <Card>
-              <h2 className="text-lg font-bold">Applicants ({applications.length})</h2>
-              {applications.length === 0 ? <p className="mt-3 text-sm text-slate-600">No applications yet.</p> : (
-                <ul className="mt-4 divide-y divide-slate-100">
-                  {applications.map((application) => (
-                    <li key={application.id} className="py-5">
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                          <p className="font-semibold text-slate-900">{application.candidate.fullName}</p>
-                          <p className="text-sm text-slate-500">{application.candidate.candidateProfile?.headline ?? application.candidate.city ?? "Candidate"}</p>
-                          <p className="mt-1 text-xs text-slate-500">Applied {formatDate(application.createdAt)}</p>
-                        </div>
-                        <Badge tone={application.status === "REJECTED" ? "red" : application.status === "HIRED" ? "green" : "slate"}>
-                          {application.status.toLowerCase().replace("_", " ")}
-                        </Badge>
-                      </div>
-                      {application.candidate.candidateProfile?.summary ? <p className="mt-3 text-sm text-slate-700">{application.candidate.candidateProfile.summary}</p> : null}
-                      {application.candidate.candidateProfile?.skills.length ? (
-                        <p className="mt-2 text-xs text-slate-500">Skills: {application.candidate.candidateProfile.skills.join(", ")}</p>
-                      ) : null}
-                      {application.coverLetter ? <p className="mt-3 whitespace-pre-line text-sm text-slate-700">{application.coverLetter}</p> : null}
-                      {["SUBMITTED", "REVIEWING", "SHORTLISTED"].includes(application.status) ? (
-                        <ActionForm action={updateApplicationStatus} className="mt-4 flex flex-wrap gap-2">
-                          <input type="hidden" name="applicationId" value={application.id} />
-                          <select name="status" defaultValue={application.status === "SUBMITTED" ? "REVIEWING" : application.status} className={inputClass}>
-                            <option value="REVIEWING">Reviewing</option>
-                            <option value="SHORTLISTED">Shortlist</option>
-                            <option value="HIRED">Hire</option>
-                            <option value="REJECTED">Reject</option>
-                          </select>
-                          <SubmitButton variant="secondary">Update status</SubmitButton>
-                        </ActionForm>
-                      ) : null}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </Card>
+          {applications ? (
+            <section className="overflow-hidden rounded-[24px] border border-[#e7eae5] bg-white shadow-[0_8px_28px_rgba(23,35,31,0.045)]">
+              <div className="border-b border-slate-100 px-5 py-5 sm:px-6">
+                <h2 className="text-lg font-bold">Applicants ({applications.length})</h2>
+                <p className="mt-1 text-sm text-slate-500">Hired and not-selected decisions are final.</p>
+              </div>
+              {applications.length ? <ApplicantList applications={applications} /> : <p className="px-6 py-8 text-sm text-slate-600">No applications yet.</p>}
+            </section>
           ) : null}
         </div>
 
         <aside className="space-y-5">
           <Card>
             <p className="text-sm font-medium text-slate-500">Employer</p>
-            <p className="mt-1 text-lg font-bold text-slate-900">{job.employer.employerProfile?.companyName ?? job.employer.fullName}</p>
+            <p className="mt-1 text-lg font-bold text-slate-900">{company}</p>
             {job.employer.employerProfile?.industry ? <p className="mt-1 text-sm text-slate-600">{job.employer.employerProfile.industry}</p> : null}
-            {job.employer.employerProfile?.description ? <p className="mt-3 text-sm leading-6 text-slate-600">{job.employer.employerProfile.description}</p> : null}
+            {job.employer.employerProfile?.description ? <p className="mt-3 whitespace-pre-line text-sm leading-6 text-slate-600">{job.employer.employerProfile.description}</p> : null}
+            {job.employer.employerProfile?.website ? (
+              <a href={job.employer.employerProfile.website} target="_blank" rel="noopener noreferrer nofollow" className="mt-3 inline-flex text-sm font-semibold text-emerald-800 hover:underline">
+                Company website ↗
+              </a>
+            ) : null}
           </Card>
-          {user?.userType === "CANDIDATE" ? (
+
+          {isCandidate && allowance ? (
             <Card>
               {myApplication ? (
-                <p className="font-semibold text-emerald-800">You applied on {formatDate(myApplication.createdAt)}.</p>
-              ) : open ? (
+                <div>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <p className="text-sm font-semibold text-emerald-900">You applied on {formatDate(myApplication.createdAt)}.</p>
+                    <Badge tone={applicationStatusMeta[myApplication.status].tone}>{applicationStatusMeta[myApplication.status].label}</Badge>
+                  </div>
+                  <p className="mt-2 text-xs text-slate-500">Last updated {formatDate(myApplication.updatedAt)}</p>
+                  <Link href="/applications" className="mt-3 inline-flex text-sm font-semibold text-emerald-800 hover:underline">View my applications →</Link>
+                </div>
+              ) : !open ? (
+                <p className="font-medium text-slate-700">This job is no longer accepting applications.</p>
+              ) : !allowance.canApply ? (
+                <Notice tone="warning" title="Monthly application limit reached">
+                  You have used your {FREE_APPLICATION_LIMIT} free applications this month. Your allowance resets on {formatDate(allowance.resetsAt)}, or upgrade to Candidate Pro for unlimited applications.
+                  <Link href="/pricing" className={`${buttonClass.primary} mt-3`}>Explore Candidate Pro</Link>
+                </Notice>
+              ) : (
                 <>
-                  <h2 className="text-lg font-bold">Apply for this job</h2>
-                  <p className="mt-1 text-sm text-slate-600">Free accounts can submit up to {FREE_APPLICATION_LIMIT} applications per month.</p>
-                  <ActionForm action={applyToJob} className="mt-4 space-y-4">
+                  <h2 className="text-lg font-bold tracking-tight text-slate-950">Apply for this job</h2>
+                  <p className="mt-2 text-sm leading-6 text-slate-600">
+                    {allowance.isPro
+                      ? "Candidate Pro: unlimited applications."
+                      : `${allowance.remaining} of ${FREE_APPLICATION_LIMIT} free applications left this month.`}
+                  </p>
+                  <ActionForm action={applyToJob} className="mt-4 space-y-4" resetOnSuccess>
                     <input type="hidden" name="jobId" value={job.id} />
-                    <Field label="Cover letter" hint="Optional. Briefly explain why you are a good fit.">
+                    <Field label="Cover letter" hint="Optional. Briefly explain why you are a good fit (up to 3,000 characters).">
                       <textarea name="coverLetter" rows={6} maxLength={3000} className={inputClass} />
                     </Field>
-                    <SubmitButton className="w-full">Submit application</SubmitButton>
+                    <p className="text-xs leading-5 text-slate-500">
+                      {company} will see your name, email, city, career profile and cover letter. Your phone number is not shared.
+                    </p>
+                    <SubmitButton className="w-full" pendingLabel="Submitting…">Submit application</SubmitButton>
                   </ActionForm>
                 </>
-              ) : <p className="font-medium text-slate-700">This job is no longer accepting applications.</p>}
+              )}
             </Card>
-          ) : !user ? (
+          ) : !user && open ? (
             <Card>
               <h2 className="text-lg font-bold">Interested in this role?</h2>
-              <p className="mt-2 text-sm text-slate-600">Create a candidate account to apply and manage your applications.</p>
-              <Link href={`/signup?role=CANDIDATE`} className="mt-4 inline-flex rounded-full bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white">Join as a candidate</Link>
+              <p className="mt-2 text-sm text-slate-600">Create a free candidate account to apply and track your applications.</p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Link href="/signup?role=CANDIDATE" className={buttonClass.primary}>Join as a candidate</Link>
+                <Link href={`/login?next=/jobs/${job.id}`} className={buttonClass.secondary}>Log in</Link>
+              </div>
             </Card>
           ) : null}
         </aside>

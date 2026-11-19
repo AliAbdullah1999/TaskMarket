@@ -1,19 +1,23 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f8fafc;
-  --foreground: #0f172a;
+  --background: #f8f6f1;
+  --foreground: #14231c;
+  --surface: #ffffff;
+  --accent: #1f5d45;
+  --accent-dark: #174936;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: Arial, Helvetica, ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Segoe UI", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   --font-mono: "Courier New", ui-monospace, monospace;
 }
 
 html {
   scroll-behavior: smooth;
+  background: var(--background);
 }
 
 body {
@@ -21,6 +25,9 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans);
+  font-feature-settings: "ss01" on;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 button,
@@ -35,6 +42,35 @@ a {
 
 button:not(:disabled) {
   cursor: pointer;
+}
+
+a {
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+::selection {
+  background: #cde9dc;
+  color: #123d30;
+}
+
+:focus-visible {
+  outline: 3px solid #70b89b;
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
 }
 
 /* Star picker: inputs are rendered 5→1 in a row-reverse flex, so "this star and

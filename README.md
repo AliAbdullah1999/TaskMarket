@@ -1,88 +1,129 @@
-# CareerMarket PK
+# Connect HR
 
-CareerMarket PK is a Pakistan-focused jobs and recruitment platform. Candidates create professional profiles, search vacancies, and manage applications. Employers publish jobs and review applicants from a hiring dashboard.
+Connect HR is a Pakistan-focused jobs and hiring marketplace. Candidates build career profiles, search and apply for jobs, and track their applications. Employers publish jobs, review applicants, and (on Employer Growth) search candidates who have chosen to share their profiles. Administrators approve memberships and manage accounts.
 
-## Product roles
+## Product overview
 
-- **Candidate:** maintain a career profile, search open jobs, apply, and track application status.
-- **Employer:** maintain a company profile, publish and close jobs, and review or update candidate applications.
-- **Administrator:** monitor platform usage, manage accounts, and review plan requests.
-- **Guest:** browse public jobs and create a candidate or employer account.
+| Role | What they can do |
+| --- | --- |
+| Guest | Browse and search open jobs, view plans, register. |
+| Candidate | Maintain a profile (headline, summary, skills, experience, visibility), apply with an optional cover letter, track application status. |
+| Employer | Maintain a company profile, create, edit and close jobs, review applicants and set their status, search public candidates (Growth only). |
+| Administrator | View platform statistics, approve or reject membership requests, view membership history, suspend or reactivate accounts. Actions are audit-logged. |
 
-## Membership plans
+### Plans
 
-The app includes a proposed monthly plan catalog and enforces access limits:
+| Plan | Price | Limits |
+| --- | --- | --- |
+| Candidate Free | — | 3 applications per calendar month (Pakistan time) |
+| Candidate Pro | PKR 1,499 / 30 days | Unlimited applications while active |
+| Employer Free | — | 1 active job |
+| Employer Growth | PKR 9,999 / 30 days | Up to 5 active jobs and candidate search |
 
-- Candidate free: up to 3 job applications per calendar month.
-- Candidate Pro: unlimited applications.
-- Employer free: 1 active job listing.
-- Employer Growth: up to 5 active job listings.
+There is no payment gateway. A member requests a plan (optionally with an external payment reference). An administrator confirms the payment outside the app and approves the request, which activates the plan for 30 days. Benefits stop automatically at the end of the period. Members can request a renewal in the last 7 days.
 
-Plan prices in `lib/constants.ts` are proposals, not finalized commercial pricing. A payment gateway is not integrated: requesting a plan does not charge the user or unlock paid features. Admins may activate a plan only after confirming an external payment and recording its reference. Do not present this as automated billing in production.
+## Technology
 
-## Requirements
+Next.js 16 (App Router, Server Actions) · React 19 · TypeScript · Prisma 6 · PostgreSQL · Tailwind CSS 4. Tests use Node's built-in test runner with `tsx` against a real PostgreSQL test database.
 
-- Node.js 20+
+### Code layout
+
+| Path | Purpose |
+| --- | --- |
+| `app/` | Routes. Mutations live in `app/actions/*` as thin server-action wrappers. |
+| `lib/services/` | Business rules (jobs, applications, memberships, accounts, profiles, candidate search). Every rule is enforced here on the server. |
+| `lib/entitlements.ts` | The single source of truth for plan limits and membership validity. |
+| `lib/auth.ts` | Signed session cookie and `requireUser` route guard. |
+| `prisma/` | Schema, migrations, and seed. |
+| `tests/` | Integration tests for the services. |
+| `scripts/e2e-smoke.mjs` | End-to-end HTTP test against a running server. |
+| `legacy/` | Retired TaskMarket code, kept for reference and not reachable. |
+
+## Prerequisites
+
+- Node.js 20+ (developed on Node 24)
 - PostgreSQL 14+
 
-## Local setup
+## Installation
 
-1. Install dependencies:
+```bash
+npm install
+cp .env.example .env      # then set DATABASE_URL (and SESSION_SECRET for production)
+```
 
-   ```bash
-   npm install
-   ```
+The Prisma CLI reads `.env`. Next.js reads both `.env` and `.env.local`.
 
-2. Create a PostgreSQL database and copy `.env.example` to `.env.local`. Set `DATABASE_URL`; the other secrets are only needed by retained legacy services.
+## Database setup
 
-3. Apply the schema:
+The schema is managed with **Prisma migrations** (`prisma/migrations`).
 
-   ```bash
-   npm run prisma:push
-   ```
+**New, empty database:**
 
-4. Load demo data:
+```bash
+npm run prisma:migrate      # prisma migrate deploy
+npm run prisma:seed         # optional demo data
+```
 
-   ```bash
-   npm run prisma:seed
-   ```
+**Existing database previously set up with `prisma db push`.** Mark the baseline as applied once, then deploy:
 
-5. Start the development server:
+```bash
+npx prisma migrate resolve --applied 0_init
+npm run prisma:migrate
+```
 
-   ```bash
-   npm run dev
-   ```
+The `20261117000000_connect_hr_mvp` migration is additive only: a new enum value, nullable columns, a new table, indexes, and a backfill of `skillsNormalized`. No data is removed.
 
-Open http://localhost:3000.
+> `npm run prisma:push` is still available for throwaway local databases, but don't use it on shared or production databases. `npm run prisma:seed -- --reset` **deletes all data** and is for local demo databases only.
 
-To reset the local database and reseed, run `npm run prisma:seed -- --reset`. This deletes all application data.
+## Local development
 
-## Demo accounts
+```bash
+npm run dev     # http://localhost:3000
+```
 
-All seeded demo accounts use the password `password123`:
+Demo accounts from the seed (password `password123`):
 
 | Role | Email |
 | --- | --- |
 | Admin | `admin@careermarket.pk` |
 | Candidate | `amina@example.com` |
-| Employer | `hiring@northstar.example` |
-| Employer | `careers@orbital.example` |
+| Employer | `hiring@northstar.example`, `careers@orbital.example` |
 
-The candidate has a sample application; the employer accounts have sample vacancies.
-
-## Useful commands
+## Testing
 
 ```bash
+npm test            # integration tests (60) against an isolated *_test database
 npm run typecheck
 npm run lint
-npm run build
-npm run prisma:studio
 ```
 
-## Data transition
+`npm test` creates `connecthr_test` (or uses `TEST_DATABASE_URL`), applies the migrations to it, and runs `tests/*.test.ts`. It refuses to run against a database whose name does not contain `test`.
 
-Legacy marketplace tables and records are retained in the Prisma schema to avoid destructive removal during this pivot. Former task and tasker pages redirect to the job area; legacy marketplace data is not automatically converted into job listings or candidate/employer profiles.
+End-to-end check (82 HTTP-level checks, including real server-action calls):
 
-## Production readiness
+```bash
+npm run build
+DATABASE_URL=<test db url> npx tsx prisma/seed.ts --reset
+DATABASE_URL=<test db url> npx next start -p 3100 &
+DATABASE_URL=<test db url> node scripts/e2e-smoke.mjs
+```
 
-Before charging users, integrate a payment provider with verified server-side callbacks, idempotency, subscription renewal/cancellation handling, and reconciliation. The current plan request flow is administrative scaffolding only. Configure `SESSION_SECRET` and `DATABASE_URL` for production; legacy address encryption and escrow cron settings are retained only for legacy services.
+## Production build
+
+```bash
+npm run build
+npm start
+```
+
+See [docs/CONNECT_HR_DEPLOYMENT.md](docs/CONNECT_HR_DEPLOYMENT.md) for deployment steps and post-deploy verification.
+
+## Documentation
+
+- [Implementation audit](docs/CONNECT_HR_IMPLEMENTATION_AUDIT.md): the initial assessment
+- [Development checklist](docs/CONNECT_HR_DEVELOPMENT_CHECKLIST.md)
+- [Implementation report](docs/CONNECT_HR_IMPLEMENTATION_REPORT.md): what changed, test results, and known limitations
+- [Deployment guide](docs/CONNECT_HR_DEPLOYMENT.md)
+
+## Legacy TaskMarket data
+
+The app began as a services marketplace (TaskMarket). Its tables (tasks, quotes, escrow, payouts, messages, ratings, FBR records) are **kept** so no data is lost. Its pages redirect to the jobs area. Its server actions aren't imported anywhere, so they aren't callable. Its API endpoints return `410 Gone` unless `LEGACY_TASKMARKET_ENABLED=true`. Legacy users choose a candidate or employer role the next time they sign in.

@@ -1,64 +1,111 @@
 import type { Metadata } from "next";
-import { reviewSubscription, setUserStatus } from "@/app/actions/admin";
-import { ActionForm, SubmitButton } from "@/components/action-form";
+import Link from "next/link";
+import { reviewSubscription } from "@/app/actions/admin";
+import { ActionForm, ConfirmSubmitButton, SubmitButton } from "@/components/action-form";
 import { Badge, Card, PageHeader, StatTile, inputClass } from "@/components/ui";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { formatDate } from "@/lib/format";
+import { activeJobWhere, expireLapsedMemberships } from "@/lib/entitlements";
+import { formatDate, planLabels } from "@/lib/format";
 
 export const metadata: Metadata = { title: "Admin" };
 
+const actionLabels: Record<string, string> = {
+  MEMBERSHIP_APPROVED: "Approved membership",
+  MEMBERSHIP_REJECTED: "Rejected membership",
+  ACCOUNT_SUSPENDED: "Suspended account",
+  ACCOUNT_REACTIVATED: "Reactivated account",
+};
+
 export default async function AdminPage() {
   await requireUser(["ADMIN"]);
-  const [subscriptions, users, candidateCount, employerCount, openJobs, totalApplications] = await Promise.all([
+  const now = new Date();
+  await expireLapsedMemberships(prisma, now);
+
+  const [pending, candidateCount, employerCount, openJobs, totalApplications, activeMemberships, auditLog] = await Promise.all([
     prisma.subscription.findMany({
       where: { status: "REQUESTED" },
       orderBy: { createdAt: "asc" },
-      include: { user: { select: { fullName: true, email: true, userType: true } } },
+      include: { user: { select: { id: true, fullName: true, email: true, userType: true, status: true } } },
     }),
-    prisma.user.findMany({ where: { userType: { not: "ADMIN" } }, orderBy: { createdAt: "desc" }, take: 20 }),
     prisma.user.count({ where: { userType: "CANDIDATE" } }),
     prisma.user.count({ where: { userType: "EMPLOYER" } }),
-    prisma.job.count({ where: { status: "OPEN", OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] } }),
+    prisma.job.count({ where: activeJobWhere(now) }),
     prisma.jobApplication.count(),
+    prisma.subscription.count({
+      where: { status: "ACTIVE", currentPeriodEnd: { gt: now }, OR: [{ currentPeriodStart: null }, { currentPeriodStart: { lte: now } }] },
+    }),
+    prisma.adminAuditLog.findMany({ orderBy: { createdAt: "desc" }, take: 10, include: { admin: { select: { fullName: true } } } }),
   ]);
 
+  // Members with a current membership of the same plan are renewals: approval extends from the current end date.
+  const renewals = new Set(
+    (
+      await prisma.subscription.findMany({
+        where: { userId: { in: pending.map((item) => item.userId) }, status: "ACTIVE", currentPeriodEnd: { gt: now } },
+        select: { userId: true, plan: true },
+      })
+    ).map((item) => `${item.userId}:${item.plan}`),
+  );
+
   return (
-    <main className="mx-auto max-w-7xl px-6 py-10">
-      <PageHeader eyebrow="Operations" title="Admin console" description="Monitor platform activity and review membership requests after verifying payment externally." />
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <main className="mx-auto max-w-7xl px-5 py-8 sm:px-6 sm:py-10">
+      <PageHeader eyebrow="Operations" title="Admin console" description="Platform activity at a glance. Approve membership requests only after confirming payment in your external payment channel." />
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         <StatTile label="Candidates" value={candidateCount.toLocaleString()} />
         <StatTile label="Employers" value={employerCount.toLocaleString()} />
-        <StatTile label="Open jobs" value={openJobs.toLocaleString()} />
+        <StatTile label="Open jobs" value={openJobs.toLocaleString()} hint="Open and not expired" />
         <StatTile label="Applications" value={totalApplications.toLocaleString()} />
+        <StatTile label="Pending requests" value={pending.length.toLocaleString()} />
+        <StatTile label="Active memberships" value={activeMemberships.toLocaleString()} />
       </div>
 
-      <Card className="mt-8">
-        <h2 className="text-lg font-bold">Membership requests ({subscriptions.length})</h2>
-        <p className="mt-1 text-sm text-slate-600">Only activate a request after confirming the payment through your external payment channel.</p>
-        {subscriptions.length === 0 ? <p className="mt-4 text-sm text-slate-500">No requests awaiting review.</p> : (
+      <Card className="mt-8 p-5 sm:p-7">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-lg font-bold tracking-tight text-slate-950">Membership requests</h2>
+          <div className="flex items-center gap-3">
+            <Badge tone={pending.length ? "amber" : "slate"}>{pending.length} awaiting review</Badge>
+            <Link href="/admin/memberships" className="text-sm font-semibold text-emerald-700 hover:underline">History →</Link>
+          </div>
+        </div>
+        {pending.length === 0 ? (
+          <p className="mt-4 text-sm text-slate-500">No requests awaiting review.</p>
+        ) : (
           <ul className="mt-4 divide-y divide-slate-100">
-            {subscriptions.map((subscription) => (
-              <li key={subscription.id} className="flex flex-col gap-4 py-5 lg:flex-row lg:items-center lg:justify-between">
-                <div>
-                  <p className="font-semibold text-slate-900">{subscription.user.fullName} <Badge tone="slate">{subscription.user.userType}</Badge></p>
-                  <p className="text-sm text-slate-600">{subscription.user.email} · {subscription.plan.replace("_", " ")}</p>
-                  <p className="mt-1 text-xs text-slate-500">Requested {formatDate(subscription.createdAt)}</p>
+            {pending.map((request) => (
+              <li key={request.id} className="grid gap-4 py-5 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-end">
+                <div className="min-w-0">
+                  <p className="flex flex-wrap items-center gap-2 font-semibold text-slate-900">
+                    {request.user.fullName}
+                    <Badge tone="slate">{request.user.userType.toLowerCase()}</Badge>
+                    {renewals.has(`${request.userId}:${request.plan}`) ? <Badge tone="blue">Renewal</Badge> : null}
+                    {request.user.status !== "ACTIVE" ? <Badge tone="red">{request.user.status.toLowerCase()}</Badge> : null}
+                  </p>
+                  <p className="text-sm text-slate-600">{request.user.email} · {planLabels[request.plan]}</p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Requested {formatDate(request.createdAt, true)} · Member&apos;s reference: {request.requestedReference ?? "none provided"}
+                  </p>
                 </div>
                 <div className="flex flex-wrap items-end gap-3">
                   <ActionForm action={reviewSubscription} className="flex flex-wrap items-end gap-2">
-                    <input type="hidden" name="subscriptionId" value={subscription.id} />
+                    <input type="hidden" name="subscriptionId" value={request.id} />
                     <input type="hidden" name="decision" value="approve" />
-                    <label className="block text-xs text-slate-600">
-                      External payment reference
-                      <input name="paymentReference" required minLength={3} maxLength={100} className={`${inputClass} mt-1 min-w-56`} />
+                    <label className="block text-xs font-medium text-slate-600">
+                      Confirmed payment reference
+                      <input name="paymentReference" required minLength={3} maxLength={100} defaultValue={request.requestedReference ?? ""} placeholder="External transaction ID" className={`${inputClass} mt-1 min-w-56 py-2`} />
                     </label>
-                    <SubmitButton>Confirm and activate</SubmitButton>
+                    <SubmitButton pendingLabel="Activating…">Confirm and activate</SubmitButton>
                   </ActionForm>
-                  <ActionForm action={reviewSubscription}>
-                    <input type="hidden" name="subscriptionId" value={subscription.id} />
+                  <ActionForm action={reviewSubscription} className="flex flex-wrap items-end gap-2">
+                    <input type="hidden" name="subscriptionId" value={request.id} />
                     <input type="hidden" name="decision" value="reject" />
-                    <SubmitButton variant="danger">Reject request</SubmitButton>
+                    <label className="block text-xs font-medium text-slate-600">
+                      Rejection reason (shown to member)
+                      <input name="note" maxLength={500} placeholder="e.g. Payment not received" className={`${inputClass} mt-1 min-w-52 py-2`} />
+                    </label>
+                    <ConfirmSubmitButton title="Reject this request?" message={`${request.user.fullName}'s request for ${planLabels[request.plan]} will be rejected. They can submit a new request later.`} confirmLabel="Reject request">
+                      Reject
+                    </ConfirmSubmitButton>
                   </ActionForm>
                 </div>
               </li>
@@ -67,23 +114,23 @@ export default async function AdminPage() {
         )}
       </Card>
 
-      <Card className="mt-8">
-        <h2 className="text-lg font-bold">Newest accounts</h2>
-        <ul className="mt-4 divide-y divide-slate-100 text-sm">
-          {users.map((user) => (
-            <li key={user.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
-              <div>
-                <p className="font-medium text-slate-900">{user.fullName} <Badge tone="slate">{user.userType}</Badge> {user.status !== "ACTIVE" ? <Badge tone="red">{user.status}</Badge> : null}</p>
-                <p className="text-slate-500">{user.email} · {user.city ?? "No location"} · joined {formatDate(user.createdAt)}</p>
-              </div>
-              <ActionForm action={setUserStatus}>
-                <input type="hidden" name="userId" value={user.id} />
-                <input type="hidden" name="status" value={user.status === "SUSPENDED" ? "ACTIVE" : "SUSPENDED"} />
-                <SubmitButton variant={user.status === "SUSPENDED" ? "secondary" : "danger"}>{user.status === "SUSPENDED" ? "Reactivate" : "Suspend"}</SubmitButton>
-              </ActionForm>
-            </li>
-          ))}
-        </ul>
+      <Card className="mt-8 p-5 sm:p-7">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-lg font-bold tracking-tight text-slate-950">Recent administrative actions</h2>
+          <Link href="/admin/accounts" className="text-sm font-semibold text-emerald-700 hover:underline">Manage accounts →</Link>
+        </div>
+        {auditLog.length === 0 ? (
+          <p className="mt-4 text-sm text-slate-500">No administrative actions recorded yet.</p>
+        ) : (
+          <ul className="mt-4 divide-y divide-slate-100 text-sm">
+            {auditLog.map((entry) => (
+              <li key={entry.id} className="flex flex-wrap justify-between gap-2 py-3">
+                <span><span className="font-semibold text-slate-900">{entry.admin.fullName}</span> · {actionLabels[entry.action] ?? entry.action} <span className="text-xs text-slate-400">({entry.targetType} {entry.targetId.slice(-6)})</span></span>
+                <span className="text-xs text-slate-500">{formatDate(entry.createdAt, true)}</span>
+              </li>
+            ))}
+          </ul>
+        )}
       </Card>
     </main>
   );

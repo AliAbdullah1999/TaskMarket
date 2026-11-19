@@ -8,33 +8,35 @@ datasource db {
 }
 
 model User {
-  id               String            @id @default(cuid())
-  fullName         String
-  email            String            @unique
-  passwordHash     String
-  phone            String?
-  country          String            @default("PK")
-  city             String?
-  userType         UserType
-  businessName     String?
-  status           UserStatus        @default(ACTIVE)
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
-  taskerProfile    TaskerProfile?
-  candidateProfile CandidateProfile?
-  employerProfile  EmployerProfile?
-  postedJobs       Job[]             @relation("EmployerJobs")
-  applications     JobApplication[]  @relation("CandidateApplications")
-  reviewedApps     JobApplication[]  @relation("EmployerReviews")
-  subscriptions    Subscription[]
-  customerTasks    Task[]            @relation("CustomerTasks")
-  assignedTasks    Task[]            @relation("TaskerAssignments")
-  quotes           Quote[]
-  messages         Message[]
-  ratingsGiven     Rating[]          @relation("RatingsGiven")
-  ratingsReceived  Rating[]          @relation("RatingsReceived")
-  payouts          Payout[]
-  fbrReportRecords FBRReportRecord[]
+  id                    String            @id @default(cuid())
+  fullName              String
+  email                 String            @unique
+  passwordHash          String
+  phone                 String?
+  country               String            @default("PK")
+  city                  String?
+  userType              UserType
+  businessName          String?
+  status                UserStatus        @default(ACTIVE)
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+  taskerProfile         TaskerProfile?
+  candidateProfile      CandidateProfile?
+  employerProfile       EmployerProfile?
+  postedJobs            Job[]             @relation("EmployerJobs")
+  applications          JobApplication[]  @relation("CandidateApplications")
+  reviewedApps          JobApplication[]  @relation("EmployerReviews")
+  subscriptions         Subscription[]    @relation("SubscriptionOwner")
+  customerTasks         Task[]            @relation("CustomerTasks")
+  assignedTasks         Task[]            @relation("TaskerAssignments")
+  quotes                Quote[]
+  messages              Message[]
+  ratingsGiven          Rating[]          @relation("RatingsGiven")
+  ratingsReceived       Rating[]          @relation("RatingsReceived")
+  payouts               Payout[]
+  fbrReportRecords      FBRReportRecord[]
+  reviewedSubscriptions Subscription[]    @relation("SubscriptionReviewer")
+  adminActions          AdminAuditLog[]
 }
 
 model TaskerProfile {
@@ -58,16 +60,20 @@ model TaskerProfile {
 }
 
 model CandidateProfile {
-  id              String   @id @default(cuid())
-  userId          String   @unique
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  headline        String?
-  summary         String?
-  skills          String[]
-  experienceYears Int?
-  isPublic        Boolean  @default(false)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id               String   @id @default(cuid())
+  userId           String   @unique
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  headline         String?
+  summary          String?
+  skills           String[]
+  /// Lower-cased copy of skills for case-insensitive search. Maintained by lib/services/profiles.ts.
+  skillsNormalized String[] @default([])
+  experienceYears  Int?
+  isPublic         Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([isPublic, updatedAt])
 }
 
 model EmployerProfile {
@@ -84,9 +90,9 @@ model EmployerProfile {
 }
 
 model Job {
-  id             String             @id @default(cuid())
+  id             String           @id @default(cuid())
   employerId     String
-  employer       User               @relation("EmployerJobs", fields: [employerId], references: [id], onDelete: Cascade)
+  employer       User             @relation("EmployerJobs", fields: [employerId], references: [id], onDelete: Cascade)
   title          String
   description    String
   requirements   String?
@@ -96,10 +102,10 @@ model Job {
   workplaceType  WorkplaceType
   salaryMin      Int?
   salaryMax      Int?
-  status         JobStatus          @default(OPEN)
+  status         JobStatus        @default(OPEN)
   expiresAt      DateTime?
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
   applications   JobApplication[]
 
   @@index([status, city, category, createdAt])
@@ -107,17 +113,17 @@ model Job {
 }
 
 model JobApplication {
-  id           String            @id @default(cuid())
-  jobId        String
-  job          Job               @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  candidateId  String
-  candidate    User              @relation("CandidateApplications", fields: [candidateId], references: [id], onDelete: Cascade)
-  employerId   String
-  employer     User              @relation("EmployerReviews", fields: [employerId], references: [id], onDelete: Cascade)
-  coverLetter  String?
-  status       ApplicationStatus @default(SUBMITTED)
-  createdAt    DateTime          @default(now())
-  updatedAt    DateTime          @updatedAt
+  id          String            @id @default(cuid())
+  jobId       String
+  job         Job               @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  candidateId String
+  candidate   User              @relation("CandidateApplications", fields: [candidateId], references: [id], onDelete: Cascade)
+  employerId  String
+  employer    User              @relation("EmployerReviews", fields: [employerId], references: [id], onDelete: Cascade)
+  coverLetter String?
+  status      ApplicationStatus @default(SUBMITTED)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
 
   @@unique([jobId, candidateId])
   @@index([candidateId, createdAt])
@@ -125,19 +131,40 @@ model JobApplication {
 }
 
 model Subscription {
-  id              String             @id @default(cuid())
-  userId          String
-  user            User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  plan            SubscriptionPlan
-  status          SubscriptionStatus @default(REQUESTED)
-  paymentReference String?
+  id                 String             @id @default(cuid())
+  userId             String
+  user               User               @relation("SubscriptionOwner", fields: [userId], references: [id], onDelete: Cascade)
+  plan               SubscriptionPlan
+  status             SubscriptionStatus @default(REQUESTED)
+  /// Reference the member supplied with their request (unverified).
+  requestedReference String?
+  /// Reference the administrator confirmed when approving.
+  paymentReference   String?
   currentPeriodStart DateTime?
-  currentPeriodEnd DateTime?
-  reviewedAt      DateTime?
-  createdAt       DateTime           @default(now())
-  updatedAt       DateTime           @updatedAt
+  currentPeriodEnd   DateTime?
+  reviewedAt         DateTime?
+  reviewedById       String?
+  reviewedBy         User?              @relation("SubscriptionReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewNote         String?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
 
   @@index([userId, status, currentPeriodEnd])
+  @@index([status, createdAt])
+}
+
+model AdminAuditLog {
+  id         String   @id @default(cuid())
+  adminId    String
+  admin      User     @relation(fields: [adminId], references: [id], onDelete: Restrict)
+  action     String
+  targetType String
+  targetId   String
+  details    Json?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([targetType, targetId])
 }
 
 model Task {
@@ -327,6 +354,7 @@ enum SubscriptionStatus {
   ACTIVE
   EXPIRED
   CANCELLED
+  REJECTED
 }
 
 enum UserStatus {

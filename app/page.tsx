@@ -1,12 +1,17 @@
+import Image from "next/image";
 import Link from "next/link";
+import { CategoryIcon } from "@/components/category-icon";
 import { JobCard } from "@/components/job-card";
 import { getCurrentUser } from "@/lib/auth";
 import { JOB_CATEGORIES } from "@/lib/constants";
 import { prisma } from "@/lib/db";
+import { redirect } from "next/navigation";
 
 export default async function Home() {
-  const [user, openJobs, employers, candidates, jobs] = await Promise.all([
-    getCurrentUser(),
+  const user = await getCurrentUser();
+  if (user) redirect("/dashboard");
+
+  const [openJobs, employers, candidates, jobs] = await Promise.all([
     prisma.job.count({ where: { status: "OPEN", OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] } }),
     prisma.user.count({ where: { userType: "EMPLOYER" } }),
     prisma.user.count({ where: { userType: "CANDIDATE" } }),
@@ -20,66 +25,78 @@ export default async function Home() {
       },
     }),
   ]);
-  const employer = user?.userType === "EMPLOYER";
-
   return (
     <main>
-      <section className="bg-gradient-to-br from-emerald-50 via-white to-sky-50">
-        <div className="mx-auto grid max-w-7xl gap-12 px-6 py-16 lg:grid-cols-[1.15fr_0.85fr] lg:items-center lg:py-24">
+      <section className="bg-[radial-gradient(ellipse_at_top_left,_#e7f1e9,_#fafbf8_58%,_#f1f5f0)]">
+        <div className="mx-auto grid max-w-7xl gap-12 px-5 py-16 sm:px-6 lg:grid-cols-[1.15fr_0.85fr] lg:items-center lg:gap-16 lg:py-24">
           <div>
-            <span className="inline-flex rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-emerald-800">
+            <span className="inline-flex rounded-full border border-emerald-900/10 bg-white/75 px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.16em] text-emerald-900 shadow-sm">
               Careers and hiring across Pakistan
             </span>
-            <h1 className="mt-6 max-w-2xl text-4xl font-black tracking-tight text-slate-950 md:text-6xl">
+            <h1 className="mt-6 max-w-2xl text-[2.7rem] font-bold leading-[1.06] tracking-[-0.045em] text-slate-950 sm:text-5xl lg:text-[4.25rem]">
               Find work that moves your career forward.
             </h1>
-            <p className="mt-5 max-w-xl text-lg leading-8 text-slate-600">
+            <p className="mt-6 max-w-xl text-base leading-7 text-slate-600 sm:text-lg sm:leading-8">
               Explore opportunities, present your skills, and apply in one place. Employers can reach talent and manage every application from a single dashboard.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
-              <Link href="/jobs" className="rounded-full bg-emerald-600 px-6 py-3 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500">
+              <Link href="/jobs" className="rounded-full bg-[#176b52] px-6 py-3 text-sm font-semibold text-white shadow-md shadow-emerald-950/15 hover:-translate-y-0.5 hover:bg-[#10543f]">
                 Explore jobs
               </Link>
               <Link
-                href={employer ? "/jobs/new" : "/signup?role=EMPLOYER"}
-                className="rounded-full border border-slate-200 bg-white px-6 py-3 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
+                href="/signup?role=EMPLOYER"
+                className="rounded-full border border-slate-200/90 bg-white/80 px-6 py-3 text-sm font-semibold text-slate-700 shadow-sm hover:border-slate-300 hover:bg-white"
               >
-                {employer ? "Post a job" : "Hire talent"}
+                Hire talent
               </Link>
             </div>
-            <p className="mt-5 text-sm text-slate-500">Free to join · Paid plans for candidates and employers · Pakistan-focused</p>
-          </div>
-
-          <div className="rounded-[30px] border border-slate-200 bg-white p-6 shadow-lg shadow-slate-900/5">
-            <p className="text-sm font-semibold text-emerald-700">A clearer way to connect</p>
-            <h2 className="mt-2 text-2xl font-bold text-slate-900">Your next opportunity starts here</h2>
-            <div className="mt-6 grid grid-cols-2 gap-3">
+            <p className="mt-5 text-xs font-medium tracking-wide text-slate-500">Free to join <span className="mx-1.5 text-emerald-700">·</span> Pakistan-focused <span className="mx-1.5 text-emerald-700">·</span> Built for both sides of hiring</p>
+            <dl className="mt-9 grid max-w-xl grid-cols-3 gap-3">
               {[
-                ["Open jobs", openJobs.toLocaleString()],
-                ["Hiring organizations", employers.toLocaleString()],
-                ["Candidate profiles", candidates.toLocaleString()],
-                ["Locations", "Nationwide"],
+                ["Employers", employers.toLocaleString()],
+                ["Candidates", candidates.toLocaleString()],
+                ["Coverage", "Nationwide"],
               ].map(([label, value]) => (
-                <div key={label} className="rounded-2xl bg-slate-50 p-4">
-                  <p className="text-xs uppercase tracking-wide text-slate-500">{label}</p>
-                  <p className="mt-2 text-xl font-black text-slate-900">{value}</p>
+                <div key={label} className="rounded-2xl border border-white/80 bg-white/75 p-3.5 shadow-sm">
+                  <dt className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">{label}</dt>
+                  <dd className="mt-1.5 text-lg font-bold tracking-tight text-slate-950">{value}</dd>
                 </div>
               ))}
+            </dl>
+          </div>
+
+          <div className="relative mx-auto w-full max-w-[580px] pb-6 pl-6 sm:pb-8 sm:pl-8">
+            <div aria-hidden="true" className="absolute bottom-0 left-0 h-[85%] w-[85%] rounded-[32px] bg-[#d6e8dc]" />
+            <Image
+              src="/images/home-hero.jpg"
+              alt="A young professional working on her laptop in a bright office"
+              width={1400}
+              height={788}
+              priority
+              sizes="(min-width: 1024px) 560px, 100vw"
+              className="relative aspect-[4/3.4] w-full rounded-[28px] object-cover object-[35%_center] shadow-[0_24px_70px_rgba(29,55,43,0.18)]"
+            />
+            <div className="absolute right-3 top-6 flex items-center gap-3 rounded-2xl bg-white/95 px-4 py-3 shadow-lg shadow-emerald-950/10 backdrop-blur sm:-right-4">
+              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-100 text-emerald-700" aria-hidden="true">✓</span>
+              <span>
+                <span className="block text-sm font-bold text-slate-900">Application shortlisted</span>
+                <span className="block text-xs text-slate-500">Track every update in one place</span>
+              </span>
             </div>
-            <div className="mt-5 rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
-              <p className="font-semibold text-emerald-950">Built for both sides of hiring</p>
-              <p className="mt-1 text-sm leading-6 text-emerald-900">Candidates manage applications and career profiles. Employers publish vacancies and review applicants.</p>
+            <div className="absolute bottom-0 right-6 rounded-2xl bg-white/95 px-5 py-4 shadow-lg shadow-emerald-950/10 backdrop-blur sm:right-10">
+              <span className="block text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">Open jobs now</span>
+              <span className="mt-1 block text-2xl font-bold tracking-tight text-[#176b52]">{openJobs.toLocaleString()}</span>
             </div>
           </div>
         </div>
       </section>
 
       {jobs.length ? (
-        <section className="mx-auto max-w-7xl px-6 py-14">
+        <section className="mx-auto max-w-7xl px-5 py-16 sm:px-6">
           <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
             <div>
-              <p className="text-sm font-semibold uppercase tracking-[0.16em] text-emerald-700">Recently posted</p>
-              <h2 className="mt-2 text-2xl font-bold text-slate-900">Latest opportunities</h2>
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-800">Recently posted</p>
+              <h2 className="mt-2 text-3xl font-bold tracking-tight text-slate-950">Latest opportunities</h2>
             </div>
             <Link href="/jobs" className="text-sm font-semibold text-emerald-700 hover:text-emerald-900">View all jobs →</Link>
           </div>
@@ -88,20 +105,20 @@ export default async function Home() {
           </div>
         </section>
       ) : (
-        <section className="mx-auto max-w-7xl px-6 py-14">
-          <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-10 text-center">
-            <h2 className="text-xl font-bold text-slate-900">Be among the first to post or apply</h2>
-            <p className="mt-2 text-sm text-slate-600">Create a candidate profile or join as an employer to get started.</p>
-            <Link href="/signup" className="mt-5 inline-flex rounded-full bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white">Create an account</Link>
+        <section className="mx-auto max-w-7xl px-5 py-16 sm:px-6">
+          <div className="rounded-[28px] border border-dashed border-slate-300 bg-white/80 px-6 py-14 text-center">
+            <h2 className="text-2xl font-bold tracking-tight text-slate-950">Be among the first to post or apply</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">Create a candidate profile or join as an employer to get started.</p>
+            <Link href="/signup" className="mt-6 inline-flex rounded-full bg-[#176b52] px-5 py-3 text-sm font-semibold text-white shadow-sm hover:bg-[#10543f]">Create an account</Link>
           </div>
         </section>
       )}
 
-      <section className="mx-auto max-w-7xl px-6 py-14">
+      <section className="mx-auto max-w-7xl px-5 py-16 sm:px-6">
         <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
           <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.16em] text-emerald-700">Explore by field</p>
-            <h2 className="mt-2 text-2xl font-bold text-slate-900">Find roles in your industry</h2>
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-800">Explore by field</p>
+            <h2 className="mt-2 text-3xl font-bold tracking-tight text-slate-950">Find roles in your industry</h2>
             <p className="mt-2 max-w-xl text-sm leading-6 text-slate-600">Start with a field that matches your experience, then discover opportunities across Pakistan.</p>
           </div>
           <Link href="/jobs" className="text-sm font-semibold text-emerald-700 hover:text-emerald-900">Browse all jobs →</Link>
@@ -111,25 +128,31 @@ export default async function Home() {
             <Link
               key={category}
               href={`/jobs?category=${encodeURIComponent(category)}`}
-              className="group flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-5 py-4 text-sm font-semibold text-slate-800 shadow-sm hover:border-emerald-300 hover:bg-emerald-50"
+              className="group flex items-center justify-between rounded-2xl border border-[#e7eae5] bg-white px-5 py-4 text-sm font-semibold text-slate-800 shadow-[0_4px_16px_rgba(23,35,31,0.035)] hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-emerald-50/70"
             >
-              <span>{category}</span>
+              <span className="flex items-center gap-3">
+                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#edf5ef] text-emerald-800 group-hover:bg-white">
+                  <CategoryIcon category={category} />
+                </span>
+                {category}
+              </span>
               <span aria-hidden="true" className="text-lg text-slate-400 group-hover:text-emerald-700">→</span>
             </Link>
           ))}
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-6 py-14">
+      <section className="mx-auto max-w-7xl px-5 py-16 sm:px-6">
         <div className="mb-6">
-          <p className="text-sm font-semibold uppercase tracking-[0.16em] text-emerald-700">A clear path forward</p>
-          <h2 className="mt-2 text-2xl font-bold text-slate-900">One platform, two ways to move ahead</h2>
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-800">A clear path forward</p>
+          <h2 className="mt-2 text-3xl font-bold tracking-tight text-slate-950">One platform, two ways to move ahead</h2>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">Whether you&apos;re looking for your next role or building a team, get started in a few simple steps.</p>
         </div>
         <div className="grid gap-5 lg:grid-cols-2">
-          <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-            <p className="text-sm font-semibold uppercase tracking-wide text-emerald-700">For candidates</p>
-            <h3 className="mt-2 text-xl font-bold text-slate-900">Take the next step in your career</h3>
+          <div className="rounded-[24px] border border-[#e7eae5] bg-white p-6 shadow-[0_8px_28px_rgba(23,35,31,0.045)] sm:p-7">
+            <Image src="/images/home-candidates.jpg" alt="A candidate shaking hands with a hiring manager after an interview" width={1400} height={788} sizes="(min-width: 1024px) 560px, 100vw" className="mb-6 aspect-[16/9] w-full rounded-[18px] object-cover" />
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-800">For candidates</p>
+            <h3 className="mt-3 text-xl font-bold tracking-tight text-slate-950">Take the next step in your career</h3>
             <ol className="mt-5 space-y-4">
               {[
                 ["01", "Create your profile", "Share your experience and skills with a career profile."],
@@ -137,7 +160,7 @@ export default async function Home() {
                 ["03", "Apply and stay organized", "Submit applications and follow their progress from your dashboard."],
               ].map(([number, title, description]) => (
                 <li key={number} className="flex gap-4">
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-xs font-bold text-emerald-800">{number}</span>
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#edf5ef] text-xs font-bold text-emerald-900">{number}</span>
                   <div>
                     <p className="text-sm font-semibold text-slate-900">{title}</p>
                     <p className="mt-1 text-sm leading-5 text-slate-600">{description}</p>
@@ -145,13 +168,14 @@ export default async function Home() {
                 </li>
               ))}
             </ol>
-            <Link href={user?.userType === "CANDIDATE" ? "/profile" : "/signup?role=CANDIDATE"} className="mt-6 inline-flex rounded-full bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-500">
+            <Link href="/signup?role=CANDIDATE" className="mt-6 inline-flex rounded-full bg-[#176b52] px-5 py-3 text-sm font-semibold text-white hover:bg-[#10543f]">
               Build your profile
             </Link>
           </div>
-          <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-            <p className="text-sm font-semibold uppercase tracking-wide text-sky-700">For employers</p>
-            <h3 className="mt-2 text-xl font-bold text-slate-900">Find the people your team needs</h3>
+          <div className="rounded-[24px] border border-[#e7eae5] bg-white p-6 shadow-[0_8px_28px_rgba(23,35,31,0.045)] sm:p-7">
+            <Image src="/images/home-employers.jpg" alt="A hiring team collaborating around a table with laptops" width={1400} height={933} sizes="(min-width: 1024px) 560px, 100vw" className="mb-6 aspect-[16/9] w-full rounded-[18px] object-cover" />
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-sky-800">For employers</p>
+            <h3 className="mt-3 text-xl font-bold tracking-tight text-slate-950">Find the people your team needs</h3>
             <ol className="mt-5 space-y-4">
               {[
                 ["01", "Set up your company", "Create an employer account to manage your hiring."],
@@ -159,7 +183,7 @@ export default async function Home() {
                 ["03", "Review applicants", "Keep applications moving from your hiring dashboard."],
               ].map(([number, title, description]) => (
                 <li key={number} className="flex gap-4">
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-sky-50 text-xs font-bold text-sky-800">{number}</span>
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-sky-50 text-xs font-bold text-sky-900">{number}</span>
                   <div>
                     <p className="text-sm font-semibold text-slate-900">{title}</p>
                     <p className="mt-1 text-sm leading-5 text-slate-600">{description}</p>
@@ -167,27 +191,13 @@ export default async function Home() {
                 </li>
               ))}
             </ol>
-            <Link href={employer ? "/jobs/new" : "/signup?role=EMPLOYER"} className="mt-6 inline-flex rounded-full bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-slate-700">
-              {employer ? "Post a job" : "Start hiring"}
+            <Link href="/signup?role=EMPLOYER" className="mt-6 inline-flex rounded-full bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-700">
+              Start hiring
             </Link>
           </div>
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-6 pb-16">
-        <div className="grid gap-5 rounded-3xl bg-slate-900 p-8 text-white md:grid-cols-2">
-          <div>
-            <p className="text-sm font-semibold uppercase tracking-wide text-emerald-300">For candidates</p>
-            <h2 className="mt-2 text-2xl font-bold">Make your experience visible</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-300">Build a profile, search relevant roles, and keep track of applications and outcomes.</p>
-          </div>
-          <div>
-            <p className="text-sm font-semibold uppercase tracking-wide text-emerald-300">For employers</p>
-            <h2 className="mt-2 text-2xl font-bold">Reach people ready for their next role</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-300">Publish vacancies and manage candidate review from a hiring dashboard.</p>
-          </div>
-        </div>
-      </section>
     </main>
   );
 }
