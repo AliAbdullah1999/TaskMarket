@@ -14,6 +14,7 @@ const base = {
   password: "secret123",
   userType: "CANDIDATE",
   businessName: "",
+  acceptTerms: true,
 };
 
 beforeEach(resetDb);

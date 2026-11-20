@@ -103,3 +103,11 @@ export const PAYMENT_METHODS = [
 ] as const;
 
 export const TIME_ZONE = "Asia/Karachi";
+
+/** Public contact address for support, privacy and security requests. Set NEXT_PUBLIC_SUPPORT_EMAIL in production. */
+export const SUPPORT_EMAIL = process.env.NEXT_PUBLIC_SUPPORT_EMAIL || "";
+/** The legal name of the business that operates the platform. Set NEXT_PUBLIC_LEGAL_ENTITY in production. */
+export const LEGAL_ENTITY = process.env.NEXT_PUBLIC_LEGAL_ENTITY || APP_NAME;
+/** Shown on the legal pages. Update whenever the Terms or Privacy Policy change. */
+export const LEGAL_LAST_UPDATED = "20 November 2026";
+export const MINIMUM_AGE = 18;

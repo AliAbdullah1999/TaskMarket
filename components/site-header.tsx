@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { APP_NAME, CITIES } from "@/lib/constants";
+import { APP_NAME, CITIES, SUPPORT_EMAIL } from "@/lib/constants";
 import { SiteNavigation } from "@/components/site-navigation";
 import type { CurrentUser } from "@/lib/auth";
 import { navigationFor } from "@/lib/navigation";
@@ -101,7 +101,12 @@ export function SiteFooter() {
 
         <div className="flex flex-col gap-3 border-t border-white/10 py-6 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between">
           <p>© {new Date().getFullYear()} {APP_NAME}. All rights reserved.</p>
-          <p>Built for Pakistan&apos;s job market · Prices in PKR · Times in Pakistan Standard Time</p>
+          <nav aria-label="Legal" className="flex flex-wrap gap-x-5 gap-y-2">
+            <Link href="/terms" className="hover:text-white">Terms of Service</Link>
+            <Link href="/privacy" className="hover:text-white">Privacy Policy</Link>
+            <Link href="/privacy#cookies" className="hover:text-white">Cookies</Link>
+            {SUPPORT_EMAIL ? <a href={`mailto:${SUPPORT_EMAIL}`} className="hover:text-white">Contact</a> : null}
+          </nav>
         </div>
       </div>
     </footer>

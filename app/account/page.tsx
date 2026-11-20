@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
-import { updateAccount, updatePassword } from "@/app/actions/account";
-import { ActionForm, SubmitButton } from "@/components/action-form";
-import { Card, Field, PageHeader, inputClass } from "@/components/ui";
+import Link from "next/link";
+import { removeAccount, signOutAllDevices, updateAccount, updatePassword } from "@/app/actions/account";
+import { ActionForm, ConfirmSubmitButton, SubmitButton } from "@/components/action-form";
+import { Card, Field, PageHeader, buttonClass, inputClass } from "@/components/ui";
 import { requireUser } from "@/lib/auth";
 import { CITIES } from "@/lib/constants";
 
@@ -55,6 +56,50 @@ export default async function AccountPage() {
             <div className="flex justify-end"><SubmitButton pendingLabel="Updating…">Update password</SubmitButton></div>
           </ActionForm>
         </Card>
+
+        <Card>
+          <h2 className="text-lg font-bold text-slate-950">Security</h2>
+          <p className="mt-2 text-sm leading-6 text-slate-600">Signed in on a shared or lost device? Sign out everywhere to end every session, including this one. Changing your password also signs out all other devices.</p>
+          <ActionForm action={signOutAllDevices} className="mt-4">
+            <ConfirmSubmitButton title="Sign out of all devices?" message="You will be signed out here and on every other device, and will need to log in again." confirmLabel="Sign out everywhere" variant="primary">
+              Sign out of all devices
+            </ConfirmSubmitButton>
+          </ActionForm>
+        </Card>
+
+        <Card>
+          <h2 className="text-lg font-bold text-slate-950">Your data</h2>
+          <p className="mt-2 text-sm leading-6 text-slate-600">
+            Download a copy of everything we hold about you: account details, profile, applications, job listings and membership records. See our{" "}
+            <Link href="/privacy" className="font-semibold text-emerald-800 hover:underline">Privacy Policy</Link> and{" "}
+            <Link href="/terms" className="font-semibold text-emerald-800 hover:underline">Terms of Service</Link>.
+          </p>
+          <a href="/account/export" download className={`${buttonClass.secondary} mt-4`}>Download my data</a>
+        </Card>
+
+        {user.userType !== "ADMIN" ? (
+          <Card className="border-rose-200">
+            <h2 className="text-lg font-bold text-rose-900">Delete account</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              This permanently deletes your account{user.userType === "EMPLOYER" ? ", company profile, job listings and the applications received for them" : ", career profile and applications"}. It cannot be undone.
+            </p>
+            <ActionForm action={removeAccount} className="mt-5 space-y-5">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label="Current password">
+                  <input name="password" type="password" required autoComplete="current-password" className={inputClass} />
+                </Field>
+                <Field label="Type DELETE to confirm">
+                  <input name="confirmation" required autoComplete="off" placeholder="DELETE" className={inputClass} />
+                </Field>
+              </div>
+              <div className="flex justify-end">
+                <ConfirmSubmitButton title="Delete your account permanently?" message="All of your data will be removed and you will be signed out. This cannot be undone." confirmLabel="Delete my account">
+                  Delete my account
+                </ConfirmSubmitButton>
+              </div>
+            </ActionForm>
+          </Card>
+        ) : null}
       </div>
     </main>
   );

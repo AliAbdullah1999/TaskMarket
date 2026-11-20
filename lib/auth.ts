@@ -9,7 +9,8 @@ import { secretKey } from "./secrets";
 const SESSION_COOKIE = "tm_session";
 const SESSION_DAYS = 14;
 
-type SessionPayload = { uid: string; exp: number };
+/** v is the user's sessionVersion when the session was issued; a mismatch means it was revoked. */
+type SessionPayload = { uid: string; exp: number; v?: number };
 
 function sign(data: string) {
   return createHmac("sha256", secretKey("SESSION_SECRET")).update(data).digest("base64url");
@@ -35,10 +36,10 @@ function decodeSession(token: string | undefined): SessionPayload | null {
   }
 }
 
-export async function createSession(userId: string) {
+export async function createSession(userId: string, sessionVersion = 0) {
   const expires = new Date(Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000);
   const cookieStore = await cookies();
-  cookieStore.set(SESSION_COOKIE, encodeSession({ uid: userId, exp: expires.getTime() }), {
+  cookieStore.set(SESSION_COOKIE, encodeSession({ uid: userId, exp: expires.getTime(), v: sessionVersion }), {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
@@ -68,10 +69,13 @@ export const getCurrentUser = cache(async () => {
       userType: true,
       businessName: true,
       status: true,
+      sessionVersion: true,
       taskerProfile: true,
     },
   });
   if (!user || user.status === "SUSPENDED" || user.status === "BANNED") return null;
+  // Password changes and "sign out everywhere" bump the version, revoking older sessions.
+  if ((session.v ?? 0) !== user.sessionVersion) return null;
   return user;
 });
 

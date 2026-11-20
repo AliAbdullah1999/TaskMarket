@@ -18,6 +18,10 @@ model User {
   userType              UserType
   businessName          String?
   status                UserStatus        @default(ACTIVE)
+  /// Incremented to invalidate every existing session (password change, sign out everywhere).
+  sessionVersion        Int               @default(0)
+  /// When the user accepted the Terms and Privacy Policy at registration.
+  termsAcceptedAt       DateTime?
   createdAt             DateTime          @default(now())
   updatedAt             DateTime          @updatedAt
   taskerProfile         TaskerProfile?
@@ -151,6 +155,16 @@ model Subscription {
 
   @@index([userId, status, currentPeriodEnd])
   @@index([status, createdAt])
+}
+
+/// Fixed-window counters for throttling sign-in, sign-up and other sensitive actions.
+model RateLimit {
+  key         String   @id
+  count       Int      @default(0)
+  windowStart DateTime @default(now())
+  expiresAt   DateTime
+
+  @@index([expiresAt])
 }
 
 model AdminAuditLog {

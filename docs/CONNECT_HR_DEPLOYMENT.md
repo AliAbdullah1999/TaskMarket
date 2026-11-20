@@ -16,6 +16,8 @@
 | `DATABASE_URL` | Yes | PostgreSQL connection string. Prefer a pooled URL on serverless hosts. |
 | `SESSION_SECRET` | Yes | 32+ random bytes (hex). The app refuses to start in production without it. Rotating it signs everyone out. |
 | `NEXT_PUBLIC_APP_NAME` | No | Display name. Defaults to "Connect HR". |
+| `NEXT_PUBLIC_SUPPORT_EMAIL` | Yes | Contact address shown on the Terms and Privacy pages and in `security.txt`. |
+| `NEXT_PUBLIC_LEGAL_ENTITY` | Yes | Registered business name shown on the legal pages. |
 | `PAYMENT_INSTRUCTIONS` | Recommended | Shown on the membership page (bank account, JazzCash or Easypaisa details). |
 | `LEGACY_TASKMARKET_ENABLED` | No | Leave unset. Setting it to `true` re-enables the retired escrow cron and FBR export endpoints. |
 | `ADDRESS_ENCRYPTION_KEY`, `CRON_SECRET` | No | Only used by retired TaskMarket code. |
@@ -70,6 +72,10 @@ All changes are additive:
 - Adds `CandidateProfile.skillsNormalized` (default `{}`) and backfills it from `skills`.
 - Creates the `AdminAuditLog` table.
 - Adds indexes on `CandidateProfile(isPublic, updatedAt)` and `Subscription(status, createdAt)`.
+
+### What the security migration changes
+
+`20261120000000_security_hardening` is also additive: `User.sessionVersion` and `User.termsAcceptedAt`, a `RateLimit` table, and Row Level Security enabled on every table. The app must connect as the role that owns the tables (the role that ran the migrations), because other roles are denied by RLS.
 
 ### Never do this in production
 

@@ -3,6 +3,7 @@ import { MEMBERSHIP_DAYS, RENEWAL_WINDOW_DAYS } from "../constants";
 import { prisma } from "../db";
 import { activeMembershipWhere } from "../entitlements";
 import { fail } from "../errors";
+import { RATE_LIMITS, enforceRateLimit, rateLimitKey } from "../rate-limit";
 import { addDays } from "../time";
 import { serializable } from "../transactions";
 import type { Actor } from "./jobs";
@@ -31,6 +32,8 @@ export async function requestMembership(
   if (reference && !REFERENCE_PATTERN.test(reference)) {
     fail("Payment reference must be 3–100 letters, numbers, spaces or - . / # characters.");
   }
+
+  await enforceRateLimit(rateLimitKey("membership-request", actor.id), RATE_LIMITS.membershipRequest);
 
   return serializable(async (tx) => {
     const pending = await tx.subscription.findFirst({

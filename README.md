@@ -92,16 +92,17 @@ Demo accounts from the seed (password `password123`):
 ## Testing
 
 ```bash
-npm test            # integration tests (60) against an isolated *_test database
+npm test            # integration tests (78) against an isolated *_test database
 npm run typecheck
 npm run lint
 ```
 
 `npm test` creates `connecthr_test` (or uses `TEST_DATABASE_URL`), applies the migrations to it, and runs `tests/*.test.ts`. It refuses to run against a database whose name does not contain `test`.
 
-End-to-end check (82 HTTP-level checks, including real server-action calls):
+End-to-end check (111 HTTP-level checks, including real server-action calls). Setting `NEXT_DIST_DIR` builds into a separate folder so a running dev server is not disturbed; set it for all four commands:
 
 ```bash
+export NEXT_DIST_DIR=.next-verify
 npm run build
 DATABASE_URL=<test db url> npx tsx prisma/seed.ts --reset
 DATABASE_URL=<test db url> npx next start -p 3100 &
@@ -123,6 +124,7 @@ See [docs/CONNECT_HR_DEPLOYMENT.md](docs/CONNECT_HR_DEPLOYMENT.md) for deploymen
 - [Development checklist](docs/CONNECT_HR_DEVELOPMENT_CHECKLIST.md)
 - [Implementation report](docs/CONNECT_HR_IMPLEMENTATION_REPORT.md): what changed, test results, and known limitations
 - [Deployment guide](docs/CONNECT_HR_DEPLOYMENT.md)
+- [Security overview](docs/CONNECT_HR_SECURITY.md): standards comparison, what is implemented, and what is still needed
 
 ## Legacy TaskMarket data
 

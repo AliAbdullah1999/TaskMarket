@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { signup } from "@/app/actions/auth";
 import { ActionForm, SubmitButton } from "@/components/action-form";
@@ -68,9 +69,18 @@ export function SignupForm({ appName, defaultRole }: { appName: string; defaultR
           </select>
         </Field>
         <Field label="Password" hint="8+ characters with a letter and a number">
-          <input name="password" type="password" required minLength={8} autoComplete="new-password" className={inputClass} />
+          <input name="password" type="password" required minLength={8} maxLength={128} autoComplete="new-password" className={inputClass} />
         </Field>
       </div>
+
+      <label className="flex items-start gap-3 text-sm leading-6 text-slate-700">
+        <input type="checkbox" name="acceptTerms" required className="mt-1 h-4 w-4 accent-emerald-700" />
+        <span>
+          I am 18 or older and I agree to the{" "}
+          <Link href="/terms" target="_blank" className="font-semibold text-emerald-800 hover:underline">Terms of Service</Link> and{" "}
+          <Link href="/privacy" target="_blank" className="font-semibold text-emerald-800 hover:underline">Privacy Policy</Link>.
+        </span>
+      </label>
 
       <SubmitButton className="w-full" pendingLabel="Creating account…">
         Create account

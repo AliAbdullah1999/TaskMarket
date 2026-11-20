@@ -15,7 +15,7 @@ import pg from "pg";
 const require = createRequire(import.meta.url);
 const { encodeReply } = require("next/dist/compiled/react-server-dom-webpack/client.edge");
 const root = path.resolve(import.meta.dirname, "..");
-const manifest = require(path.join(root, ".next/server/server-reference-manifest.json"));
+const manifest = require(path.join(root, process.env.NEXT_DIST_DIR ?? ".next", "server/server-reference-manifest.json"));
 
 const BASE = process.env.E2E_BASE_URL ?? "http://localhost:3100";
 const DB = process.env.DATABASE_URL ?? "";
@@ -36,11 +36,15 @@ function record(name, ok, detail = "") {
 
 async function get(pathname, cookie) {
   const res = await fetch(BASE + pathname, { redirect: "manual", headers: cookie ? { cookie } : {} });
-  return { status: res.status, location: res.headers.get("location") ?? "", text: await res.text() };
+  return { status: res.status, location: res.headers.get("location") ?? "", headers: res.headers, text: await res.text() };
 }
 
 /** Calls a server action exactly as the browser does: Next-Action header + React-encoded (prevState, formData). */
-async function act(pagePath, name, fields, cookie) {
+let fakeIp = 0;
+async function act(pagePath, name, fields, cookie, ip) {
+  // Each call comes from its own address unless a test pins one, so rate limits only trigger where a test intends.
+  fakeIp += 1;
+  const forwardedFor = ip ?? `198.51.100.${fakeIp % 250}`;
   const id = actionIds[name];
   if (!id) throw new Error(`Unknown action ${name}`);
   const form = new FormData();
@@ -49,13 +53,14 @@ async function act(pagePath, name, fields, cookie) {
   const res = await fetch(BASE + pagePath, {
     method: "POST",
     redirect: "manual",
-    headers: { "next-action": id, accept: "text/x-component", origin: BASE, ...(cookie ? { cookie } : {}) },
+    headers: { "next-action": id, accept: "text/x-component", origin: BASE, "x-forwarded-for": forwardedFor, ...(cookie ? { cookie } : {}) },
     body,
   });
   const setCookie = res.headers.getSetCookie().find((value) => value.startsWith("tm_session=")) ?? "";
   return {
     status: res.status,
     redirect: res.headers.get("x-action-redirect") ?? "",
+    rawCookie: setCookie,
     cookie: setCookie && !/tm_session=;/.test(setCookie) ? setCookie.split(";")[0] : "",
     cleared: /tm_session=;|tm_session=""|Max-Age=0|Expires=Thu, 01 Jan 1970/i.test(setCookie),
     text: await res.text(),
@@ -79,17 +84,17 @@ const job = (title) => ({
 });
 
 // ---------------------------------------------------------------- Authentication
-const signupCandidate = await act("/signup", "signup", { userType: "CANDIDATE", fullName: "E2E Candidate", email: `cand${stamp}@e2e.test`, city: "Karachi", phone: "03001112222", password: "candidate1" });
+const signupCandidate = await act("/signup", "signup", { userType: "CANDIDATE", fullName: "E2E Candidate", email: `cand${stamp}@e2e.test`, city: "Karachi", phone: "03001112222", password: "candidate1", acceptTerms: "on" });
 expectRedirect("Candidate registration redirects to profile setup", signupCandidate, /^\/profile\?welcome=1/);
 const C1 = signupCandidate.cookie;
 record("Candidate registration sets a session cookie", Boolean(C1));
 
-const signupEmployer = await act("/signup", "signup", { userType: "EMPLOYER", fullName: "E2E Recruiter", businessName: "E2E Traders", email: `emp${stamp}@e2e.test`, city: "Lahore", phone: "", password: "employer1" });
+const signupEmployer = await act("/signup", "signup", { userType: "EMPLOYER", fullName: "E2E Recruiter", businessName: "E2E Traders", email: `emp${stamp}@e2e.test`, city: "Lahore", phone: "", password: "employer1", acceptTerms: "on" });
 expectRedirect("Employer registration redirects to profile setup", signupEmployer, /^\/profile\?welcome=1/);
 const E1 = signupEmployer.cookie;
 
-expectText("Duplicate email is rejected", await act("/signup", "signup", { userType: "CANDIDATE", fullName: "Dup", email: `CAND${stamp}@e2e.test`, city: "Karachi", password: "candidate1" }), /already exists/);
-expectText("Signup cannot create an admin", await act("/signup", "signup", { userType: "ADMIN", fullName: "Evil", email: `evil${stamp}@e2e.test`, city: "Karachi", password: "candidate1" }), /candidate or employer/);
+expectText("Duplicate email is rejected", await act("/signup", "signup", { userType: "CANDIDATE", fullName: "Dup", email: `CAND${stamp}@e2e.test`, city: "Karachi", password: "candidate1", acceptTerms: "on" }), /already exists/);
+expectText("Signup cannot create an admin", await act("/signup", "signup", { userType: "ADMIN", fullName: "Evil", email: `evil${stamp}@e2e.test`, city: "Karachi", password: "candidate1", acceptTerms: "on" }), /candidate or employer/);
 expectText("Invalid credentials are rejected", await act("/login", "login", { email: `cand${stamp}@e2e.test`, password: "wrongpass1" }), /Incorrect email or password/);
 const relogin = await act("/login", "login", { email: `cand${stamp}@e2e.test`, password: "candidate1", next: "//evil.com" });
 expectRedirect("Login succeeds and ignores an off-site next URL", relogin, /^\/dashboard/);
@@ -108,7 +113,7 @@ expectRedirect("Admin dashboard link goes to the console", await get("/dashboard
 // ---------------------------------------------------------------- Candidate profile
 expectText("Candidate can save a public profile", await act("/profile", "updateCandidateProfile", { headline: "Operations coordinator", summary: "Organised and detail-focused.", skills: "Excel, Customer Service", experienceYears: "4", isPublic: "on" }, C1), /Candidate profile saved/);
 expectText("Employer cannot save a candidate profile", await act("/profile", "updateCandidateProfile", { headline: "x", summary: "", skills: "", experienceYears: "", isPublic: "on" }, E1), /Candidate access required/);
-const signupPrivate = await act("/signup", "signup", { userType: "CANDIDATE", fullName: "Private Person", email: `private${stamp}@e2e.test`, city: "Lahore", password: "private123" });
+const signupPrivate = await act("/signup", "signup", { userType: "CANDIDATE", fullName: "Private Person", email: `private${stamp}@e2e.test`, city: "Lahore", password: "private123", acceptTerms: "on" });
 const C2 = signupPrivate.cookie;
 await act("/profile", "updateCandidateProfile", { headline: "Hidden accountant", summary: "", skills: "Accounting", experienceYears: "6" }, C2);
 
@@ -172,7 +177,7 @@ record("Another employer gets 404 on the edit page", (await get(`/jobs/${jobIds[
 expectText("Another employer cannot close the job", await act(`/jobs/${jobIds[0]}`, "closeJob", { jobId: jobIds[0] }, E2), /does not belong/);
 expectRedirect("Owner can edit the job", await act(`/jobs/${jobIds[4]}/edit`, "updateJob", { jobId: jobIds[4], ...job("E2E Office Coordinator 5 (edited)") }, E1), /notice=updated/);
 expectText("Owner can close the job", await act(`/jobs/${jobIds[4]}`, "closeJob", { jobId: jobIds[4] }, E1), /Job listing closed/);
-const signupThird = await act("/signup", "signup", { userType: "CANDIDATE", fullName: "Third Candidate", email: `third${stamp}@e2e.test`, city: "Multan", password: "third1234" });
+const signupThird = await act("/signup", "signup", { userType: "CANDIDATE", fullName: "Third Candidate", email: `third${stamp}@e2e.test`, city: "Multan", password: "third1234", acceptTerms: "on" });
 expectText("Closed job rejects applications", await act(`/jobs/${jobIds[4]}`, "applyToJob", { jobId: jobIds[4], coverLetter: "" }, signupThird.cookie), /no longer accepting/);
 const listing = await get("/jobs?q=E2E+Office", undefined);
 record("Closed jobs are excluded from public listings", listing.text.includes("E2E Office Coordinator 1") && !listing.text.includes("Coordinator 5 (edited)"));
@@ -219,6 +224,61 @@ record("Pricing does not advertise unimplemented benefits", !/priority placement
 expectRedirect("Legacy /tasks redirects to jobs", await get("/tasks"), /\/jobs$/);
 record("Legacy cron endpoint is retired (410)", (await get("/api/cron/auto-release")).status === 410);
 record("Legacy FBR report endpoint is retired (410)", (await get("/api/admin/fbr-report", A)).status === 410);
+// ---------------------------------------------------------------- Security headers and hardening
+const home = await get("/");
+const csp = home.headers.get("content-security-policy") ?? "";
+const nonce = csp.match(/'nonce-([^']+)'/)?.[1] ?? "";
+record("CSP: nonce-based script policy with strict-dynamic", /script-src 'self' 'nonce-[^']+' 'strict-dynamic'/.test(csp) && !/script-src[^;]*unsafe-inline/.test(csp) && !/unsafe-eval/.test(csp), csp);
+record("CSP: blocks framing, plugins and foreign form posts", ["frame-ancestors 'none'", "object-src 'none'", "base-uri 'self'", "form-action 'self'"].every((part) => csp.includes(part)), csp);
+record("CSP: every script tag on the page carries the nonce", nonce.length > 10 && [...home.text.matchAll(/<script\b[^>]*>/g)].every((tag) => tag[0].includes(`nonce="${nonce}"`)));
+record("CSP: nonce is different on every request", nonce !== ((await get("/")).headers.get("content-security-policy") ?? "").match(/'nonce-([^']+)'/)?.[1]);
+record("Header: X-Content-Type-Options nosniff", home.headers.get("x-content-type-options") === "nosniff");
+record("Header: X-Frame-Options DENY", home.headers.get("x-frame-options") === "DENY");
+record("Header: Referrer-Policy", home.headers.get("referrer-policy") === "strict-origin-when-cross-origin");
+record("Header: Permissions-Policy disables device features", /camera=\(\)/.test(home.headers.get("permissions-policy") ?? ""));
+record("Header: Strict-Transport-Security", /max-age=63072000/.test(home.headers.get("strict-transport-security") ?? ""));
+record("Header: framework is not advertised", !home.headers.has("x-powered-by"));
+record("Session cookie is HttpOnly and SameSite=Lax", /HttpOnly/i.test(adminLogin.rawCookie) && /SameSite=lax/i.test(adminLogin.rawCookie), adminLogin.rawCookie);
+
+record("Terms and Privacy pages render", (await get("/terms")).status === 200 && (await get("/privacy")).status === 200);
+record("Signed-out footer links to the legal pages", home.text.includes('href="/terms"') && home.text.includes('href="/privacy"'));
+record("robots.txt keeps private areas out of search engines", /Disallow: \/admin/.test((await get("/robots.txt")).text));
+expectText("Signup is rejected without accepting the terms", await act("/signup", "signup", { userType: "CANDIDATE", fullName: "No Consent", email: `noconsent${stamp}@e2e.test`, city: "Karachi", password: "noconsent1" }), /accept the Terms/);
+expectText("Common passwords are rejected at signup", await act("/signup", "signup", { userType: "CANDIDATE", fullName: "Weak Pass", email: `weak${stamp}@e2e.test`, city: "Karachi", password: "password123", acceptTerms: "on" }), /too common/);
+
+// Brute-force lockout: five wrong passwords, then even the right one is refused.
+const victim = await act("/signup", "signup", { userType: "CANDIDATE", fullName: "Lockout Target", email: `lock${stamp}@e2e.test`, city: "Karachi", password: "lockout-good-1", acceptTerms: "on" });
+for (let i = 0; i < 5; i += 1) await act("/login", "login", { email: `lock${stamp}@e2e.test`, password: `wrong-guess-${i}` });
+expectText("Account locks after five wrong passwords", await act("/login", "login", { email: `lock${stamp}@e2e.test`, password: "lockout-good-1" }), /Too many attempts/);
+const pinnedIp = "203.0.113.50";
+let sprayBlocked = false;
+for (let i = 0; i < 32 && !sprayBlocked; i += 1) {
+  sprayBlocked = /Too many attempts/.test((await act("/login", "login", { email: `spray${i}-${stamp}@e2e.test`, password: "guess-1234" }, undefined, pinnedIp)).text);
+}
+record("One address is throttled when guessing across many accounts", sprayBlocked);
+
+// Session revocation: a password change signs out other devices but keeps this one.
+const deviceA = victim.cookie;
+await db.query(`delete from "RateLimit"`);
+const deviceB = (await act("/login", "login", { email: `lock${stamp}@e2e.test`, password: "lockout-good-1" })).cookie;
+const changed = await act("/account", "updatePassword", { currentPassword: "lockout-good-1", newPassword: "lockout-newer-2", confirmPassword: "lockout-newer-2" }, deviceB);
+expectText("Password can be changed", changed, /Password updated/);
+expectRedirect("Password change signs out other devices", await get("/dashboard", deviceA), /\/login/);
+record("Password change keeps the current device signed in", Boolean(changed.cookie) && (await get("/dashboard", changed.cookie)).status === 200);
+const deviceC = changed.cookie;
+expectRedirect("Sign out everywhere redirects to login", await act("/account", "signOutAllDevices", {}, deviceC), /^\/login/);
+expectRedirect("Sign out everywhere revokes the session", await get("/dashboard", deviceC), /\/login/);
+
+// Data rights: export and deletion.
+record("Data export requires sign-in", (await get("/account/export")).status === 401);
+const deviceD = (await act("/login", "login", { email: `lock${stamp}@e2e.test`, password: "lockout-newer-2" })).cookie;
+const exported = await get("/account/export", deviceD);
+record("Data export returns the user's data without the password hash", exported.status === 200 && exported.text.includes(`lock${stamp}@e2e.test`) && !/passwordHash|scrypt\$/.test(exported.text));
+expectText("Account deletion needs the correct password", await act("/account", "removeAccount", { password: "not-my-password-1", confirmation: "DELETE" }, deviceD), /password is incorrect/);
+expectRedirect("Account can be deleted", await act("/account", "removeAccount", { password: "lockout-newer-2", confirmation: "DELETE" }, deviceD), /account=deleted/);
+record("Deleted account is gone from the database", (await one(`select count(*)::int as n from "User" where email = $1`, [`lock${stamp}@e2e.test`])).n === 0);
+expectRedirect("Deleted account's session no longer works", await get("/dashboard", deviceD), /\/login/);
+
 const logout = await act("/dashboard", "logout", {}, C1);
 record("Logout clears the session cookie", logout.cleared, `${logout.status} ${logout.redirect}`);
 

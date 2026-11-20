@@ -17,8 +17,8 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   await connection();
   const user = await getCurrentUser();
   return (
-    <html lang="en" className="h-full antialiased">
-      <body className="app-body flex min-h-full flex-col bg-background text-foreground">
+    <html lang="en" className="h-full antialiased" data-scroll-behavior="smooth">
+      <body className="app-body flex min-h-full flex-col bg-background text-foreground" suppressHydrationWarning>
         {hasDatabaseConfig ? (
           <>
             <SiteHeader user={user} />
