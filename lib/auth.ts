@@ -70,7 +70,7 @@ export const getCurrentUser = cache(async () => {
       businessName: true,
       status: true,
       sessionVersion: true,
-      taskerProfile: true,
+      emailVerifiedAt: true,
     },
   });
   if (!user || user.status === "SUSPENDED" || user.status === "BANNED") return null;
@@ -87,16 +87,4 @@ export async function requireUser(roles?: UserType[]) {
   if (!user) redirect("/login");
   if (roles && !roles.includes(user.userType)) redirect("/dashboard");
   return user;
-}
-
-export function isCustomer(user: { userType: UserType } | null) {
-  return user?.userType === "CUSTOMER" || user?.userType === "BUSINESS";
-}
-
-export function isCandidate(user: { userType: UserType } | null) {
-  return user?.userType === "CANDIDATE";
-}
-
-export function isEmployer(user: { userType: UserType } | null) {
-  return user?.userType === "EMPLOYER";
 }

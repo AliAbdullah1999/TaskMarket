@@ -9,6 +9,7 @@ import { FREE_APPLICATION_LIMIT, PAGE_SIZE } from "@/lib/constants";
 import { prisma } from "@/lib/db";
 import { getCandidateApplicationAllowance } from "@/lib/entitlements";
 import { applicationStatusMeta, formatDate, jobStatusMeta } from "@/lib/format";
+import { getOpenInvitationsForCandidate } from "@/lib/services/invitations";
 
 export const metadata: Metadata = { title: "Applications" };
 
@@ -95,7 +96,11 @@ export default async function ApplicationsPage(props: PageProps<"/applications">
   }
 
   const where: Prisma.JobApplicationWhereInput = { candidateId: user.id, ...(status ? { status } : {}) };
-  const [total, allowance] = await Promise.all([prisma.jobApplication.count({ where }), getCandidateApplicationAllowance(prisma, user.id)]);
+  const [total, allowance, invitations] = await Promise.all([
+    prisma.jobApplication.count({ where }),
+    getCandidateApplicationAllowance(prisma, user.id),
+    getOpenInvitationsForCandidate(user.id),
+  ]);
   const { page, pageCount, skip, take } = paginate(total, requestedPage, PAGE_SIZE);
   const applications = await prisma.jobApplication.findMany({
     where,
@@ -128,6 +133,28 @@ export default async function ApplicationsPage(props: PageProps<"/applications">
         description={allowance.isPro ? "Candidate Pro: unlimited applications." : `${allowance.used} of ${FREE_APPLICATION_LIMIT} free applications used this month. Resets ${formatDate(allowance.resetsAt)}.`}
         action={<Link href="/jobs" className={buttonClass.primary}>Browse jobs</Link>}
       />
+      {invitations.length ? (
+        <section aria-labelledby="invitations-heading" className="mb-8 overflow-hidden rounded-[24px] border border-emerald-200 bg-emerald-50/60">
+          <div className="border-b border-emerald-100 px-5 py-4 sm:px-6">
+            <h2 id="invitations-heading" className="text-lg font-bold text-emerald-950">Invitations to apply ({invitations.length})</h2>
+            <p className="mt-1 text-sm text-emerald-900">Employers who found your profile and want to hear from you.</p>
+          </div>
+          <ul className="divide-y divide-emerald-100">
+            {invitations.map((invitation) => (
+              <li key={invitation.id} className="flex flex-wrap items-center justify-between gap-4 px-5 py-4 sm:px-6">
+                <div className="min-w-0">
+                  <p className="font-semibold text-slate-900">{invitation.job.title}</p>
+                  <p className="mt-1 text-sm text-slate-600">
+                    {invitation.job.employer.employerProfile?.companyName ?? invitation.job.employer.fullName} · {invitation.job.city} · invited {formatDate(invitation.createdAt)}
+                  </p>
+                  {invitation.message ? <p className="mt-2 whitespace-pre-line text-sm leading-6 text-slate-700">“{invitation.message}”</p> : null}
+                </div>
+                <Link href={`/jobs/${invitation.job.id}`} className={buttonClass.primary}>View job</Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
       <StatusFilter current={status} extra={{}} />
       {applications.length ? (
         <ul className="divide-y divide-slate-100 overflow-hidden rounded-[24px] border border-[#e7eae5] bg-white shadow-[0_8px_28px_rgba(23,35,31,0.045)]">

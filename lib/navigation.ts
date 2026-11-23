@@ -26,6 +26,7 @@ const NAVIGATION: Record<"CANDIDATE" | "EMPLOYER" | "ADMIN" | "LEGACY" | "GUEST"
     { href: "/admin", label: "Overview", icon: "overview" },
     { href: "/admin/memberships", label: "Memberships", icon: "plans" },
     { href: "/admin/accounts", label: "Accounts", icon: "candidates" },
+    { href: "/admin/jobs", label: "Job listings", icon: "jobs" },
     { href: "/account", label: "Account settings", icon: "settings" },
   ],
   LEGACY: [{ href: "/dashboard", label: "Account update", icon: "overview" }],

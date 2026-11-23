@@ -35,7 +35,7 @@ Any table added in a future migration must also run `ALTER TABLE "<name>" ENABLE
 | A04 Insecure design | Done | Plan limits and membership approval enforced in serializable transactions, tested with parallel requests. Pending or rejected memberships can never unlock features. |
 | A05 Security misconfiguration | Done | Security headers on every response (see section 4). Framework header removed. Generic error messages; details are only logged on the server. |
 | A06 Vulnerable components | Mostly | Next.js upgraded 16.3.5 to 16.4.6, which fixes a critical advisory. `npm audit` is down from 7 findings (1 critical) to 4. The remaining 4 are in the Prisma command-line tool's dependencies and need the Prisma 7 major upgrade (see section 6). |
-| A07 Authentication failures | Mostly | Account lockout after 5 wrong passwords, per-address throttling, common-password blocklist, identical error for unknown email and wrong password, session revocation. Missing: email verification, password reset by email and two-factor sign-in (section 6). |
+| A07 Authentication failures | Mostly | Account lockout after 5 wrong passwords, per-address throttling, common-password blocklist, identical error for unknown email and wrong password, session revocation. Email confirmation is required before applying, publishing or inviting, and password reset is by single-use emailed link (1 hour, stored hashed, signs out all sessions). Missing: two-factor sign-in (section 6). |
 | A08 Integrity failures | Done | Dependencies pinned by `package-lock.json`. Server Actions verify the request origin. |
 | A09 Logging and monitoring | Partial | Admin actions are written to an audit log. Unexpected errors are logged. There is no alerting or central log monitoring yet (section 6). |
 | A10 Server-side request forgery | Not applicable | The server never fetches URLs supplied by users. |
@@ -89,8 +89,7 @@ These need a decision, an outside service, or infrastructure, so they are not in
 
 | Gap | Why it matters | What it needs |
 |---|---|---|
-| Email verification at sign-up | Without it, anyone can register with someone else's email address. | An email sending provider (for example Resend, Postmark or Amazon SES). |
-| Password reset by email | Users who forget their password currently have no self-service way back in. | The same email provider. |
+| Email delivery configuration | Email confirmation and password reset are implemented, but nothing is delivered until an email option (Gmail SMTP or Resend) and `APP_URL` are set. For a public launch use a verified domain with SPF and DKIM records. | A Gmail app password, or a Resend account and DNS access. |
 | Two-factor sign-in for administrators | An admin account can approve memberships and suspend users, so it is the most valuable target. | A design decision, then about a day of work (authenticator app codes). |
 | Prisma 7 upgrade | Clears the last 4 `npm audit` findings. They are in the command-line tool used for migrations, not in code that handles visitor requests. | A planned major-version upgrade and retest. |
 | Network-level protection | App-level limits do not stop a large flood of traffic. | A web application firewall or DDoS protection in front of the site (Vercel and Cloudflare both offer this). |

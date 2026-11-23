@@ -81,16 +81,6 @@ export function Avatar({ name, size = "md" }: { name: string; size?: "sm" | "md"
   );
 }
 
-export function Stars({ value, count }: { value: number; count?: number }) {
-  if (!count && !value) return <span className="text-sm text-slate-400">No reviews yet</span>;
-  return (
-    <span className="text-sm text-slate-600">
-      <span className="text-amber-500">★</span> <span className="font-semibold text-slate-900">{value.toFixed(1)}</span>
-      {count != null ? <span className="text-slate-500"> ({count})</span> : null}
-    </span>
-  );
-}
-
 export function EmptyState({ title, description, href, cta }: { title: string; description: string; href?: string; cta?: string }) {
   return (
     <div className="rounded-[24px] border border-dashed border-slate-300 bg-white/75 px-6 py-12 text-center">

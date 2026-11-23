@@ -21,7 +21,7 @@ export async function resetDb() {
 }
 
 let counter = 0;
-export async function createUser(userType: UserType, overrides: { city?: string; status?: "ACTIVE" | "SUSPENDED"; fullName?: string } = {}) {
+export async function createUser(userType: UserType, overrides: { city?: string; status?: "ACTIVE" | "SUSPENDED"; fullName?: string; verified?: boolean } = {}) {
   counter += 1;
   return prisma.user.create({
     data: {
@@ -32,6 +32,7 @@ export async function createUser(userType: UserType, overrides: { city?: string;
       phone: "03001234567",
       userType,
       status: overrides.status ?? "ACTIVE",
+      emailVerifiedAt: overrides.verified === false ? null : new Date(),
       candidateProfile: userType === "CANDIDATE" ? { create: { skills: [] } } : undefined,
       employerProfile: userType === "EMPLOYER" ? { create: { companyName: `Company ${counter}` } } : undefined,
     },

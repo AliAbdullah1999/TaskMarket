@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { type ActionState, fail, int, runAction, text } from "@/lib/action-state";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { normalizeSkills, saveCandidateProfile, saveEmployerProfile } from "@/lib/services/profiles";
+import { saveCandidateProfile, saveEmployerProfile } from "@/lib/services/profiles";
 
 export async function updateCandidateProfile(_prev: ActionState, formData: FormData): Promise<ActionState> {
   return runAction(async () => {
@@ -50,17 +50,9 @@ export async function transitionLegacyAccount(_prev: ActionState, formData: Form
 
     await prisma.$transaction(async (tx) => {
       if (role === "CANDIDATE") {
-        const taskerProfile = await tx.taskerProfile.findUnique({ where: { userId: user.id } });
         await tx.candidateProfile.upsert({
           where: { userId: user.id },
-          create: {
-            userId: user.id,
-            headline: taskerProfile?.categories.length ? taskerProfile.categories.join(", ") : null,
-            summary: taskerProfile?.bio ?? null,
-            skills: taskerProfile?.categories ?? [],
-            skillsNormalized: normalizeSkills(taskerProfile?.categories ?? []),
-            isPublic: false,
-          },
+          create: { userId: user.id, skills: [], isPublic: false },
           update: {},
         });
       } else {

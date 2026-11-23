@@ -22,45 +22,21 @@ model User {
   sessionVersion        Int               @default(0)
   /// When the user accepted the Terms and Privacy Policy at registration.
   termsAcceptedAt       DateTime?
+  /// When the user proved they control this email address (verification link or password reset).
+  emailVerifiedAt       DateTime?
   createdAt             DateTime          @default(now())
   updatedAt             DateTime          @updatedAt
-  taskerProfile         TaskerProfile?
   candidateProfile      CandidateProfile?
   employerProfile       EmployerProfile?
   postedJobs            Job[]             @relation("EmployerJobs")
   applications          JobApplication[]  @relation("CandidateApplications")
   reviewedApps          JobApplication[]  @relation("EmployerReviews")
   subscriptions         Subscription[]    @relation("SubscriptionOwner")
-  customerTasks         Task[]            @relation("CustomerTasks")
-  assignedTasks         Task[]            @relation("TaskerAssignments")
-  quotes                Quote[]
-  messages              Message[]
-  ratingsGiven          Rating[]          @relation("RatingsGiven")
-  ratingsReceived       Rating[]          @relation("RatingsReceived")
-  payouts               Payout[]
-  fbrReportRecords      FBRReportRecord[]
   reviewedSubscriptions Subscription[]    @relation("SubscriptionReviewer")
   adminActions          AdminAuditLog[]
-}
-
-model TaskerProfile {
-  id                    String           @id @default(cuid())
-  userId                String           @unique
-  user                  User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  ntin                  String?
-  ntinVerified          Boolean          @default(false)
-  verificationTier      VerificationTier @default(BASIC)
-  categories            String[]
-  serviceAreas          String[]
-  bio                   String?
-  priceFrom             Int?
-  rating                Float            @default(0)
-  ratingCount           Int              @default(0)
-  completedJobs         Int              @default(0)
-  backgroundCheckStatus BackgroundStatus @default(PENDING)
-  status                ProfileStatus    @default(ACTIVE)
-  createdAt             DateTime         @default(now())
-  updatedAt             DateTime         @updatedAt
+  authTokens            AuthToken[]
+  invitationsSent       JobInvitation[]   @relation("InvitationsSent")
+  invitationsReceived   JobInvitation[]   @relation("InvitationsReceived")
 }
 
 model CandidateProfile {
@@ -111,6 +87,9 @@ model Job {
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
   applications   JobApplication[]
+  invitations    JobInvitation[]
+  /// Set when an administrator removes the listing (status ARCHIVED). Shown to the employer.
+  removedReason  String?
 
   @@index([status, city, category, createdAt])
   @@index([employerId, status])
@@ -135,26 +114,60 @@ model JobApplication {
 }
 
 model Subscription {
-  id                 String             @id @default(cuid())
-  userId             String
-  user               User               @relation("SubscriptionOwner", fields: [userId], references: [id], onDelete: Cascade)
-  plan               SubscriptionPlan
-  status             SubscriptionStatus @default(REQUESTED)
+  id                    String             @id @default(cuid())
+  userId                String
+  user                  User               @relation("SubscriptionOwner", fields: [userId], references: [id], onDelete: Cascade)
+  plan                  SubscriptionPlan
+  status                SubscriptionStatus @default(REQUESTED)
   /// Reference the member supplied with their request (unverified).
-  requestedReference String?
+  requestedReference    String?
   /// Reference the administrator confirmed when approving.
-  paymentReference   String?
-  currentPeriodStart DateTime?
-  currentPeriodEnd   DateTime?
-  reviewedAt         DateTime?
-  reviewedById       String?
-  reviewedBy         User?              @relation("SubscriptionReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
-  reviewNote         String?
-  createdAt          DateTime           @default(now())
-  updatedAt          DateTime           @updatedAt
+  paymentReference      String?
+  currentPeriodStart    DateTime?
+  currentPeriodEnd      DateTime?
+  reviewedAt            DateTime?
+  reviewedById          String?
+  reviewedBy            User?              @relation("SubscriptionReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewNote            String?
+  /// When the "your membership ends soon" email was sent, so it is sent only once.
+  renewalReminderSentAt DateTime?
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
 
   @@index([userId, status, currentPeriodEnd])
   @@index([status, createdAt])
+}
+
+/// An employer's invitation for a searchable candidate to apply to one of their jobs.
+model JobInvitation {
+  id          String   @id @default(cuid())
+  jobId       String
+  job         Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  employerId  String
+  employer    User     @relation("InvitationsSent", fields: [employerId], references: [id], onDelete: Cascade)
+  candidateId String
+  candidate   User     @relation("InvitationsReceived", fields: [candidateId], references: [id], onDelete: Cascade)
+  message     String?
+  createdAt   DateTime @default(now())
+
+  @@unique([jobId, candidateId])
+  @@index([candidateId, createdAt])
+  @@index([employerId, createdAt])
+}
+
+/// Single-use links emailed to a user. Only a SHA-256 hash of the token is stored.
+model AuthToken {
+  id        String           @id @default(cuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  purpose   AuthTokenPurpose
+  tokenHash String           @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  @@index([userId, purpose])
+  @@index([expiresAt])
 }
 
 /// Fixed-window counters for throttling sign-in, sign-up and other sensitive actions.
@@ -181,143 +194,9 @@ model AdminAuditLog {
   @@index([targetType, targetId])
 }
 
-model Task {
-  id                String             @id @default(cuid())
-  title             String
-  description       String
-  category          String
-  serviceType       String
-  city              String
-  neighborhood      String?
-  budgetMin         Int?
-  budgetMax         Int?
-  preferredDate     DateTime?
-  durationHours     Int?
-  status            TaskStatus         @default(OPEN)
-  customerId        String
-  customer          User               @relation("CustomerTasks", fields: [customerId], references: [id])
-  taskerId          String?
-  tasker            User?              @relation("TaskerAssignments", fields: [taskerId], references: [id])
-  requirements      Json?
-  addressMode       AddressMode        @default(DISCLOSED_AFTER_ESCROW)
-  addressEncrypted  String?
-  taskerCompletedAt DateTime?
-  completedAt       DateTime?
-  createdAt         DateTime           @default(now())
-  updatedAt         DateTime           @updatedAt
-  quotes            Quote[]
-  escrowTransaction EscrowTransaction?
-  messages          Message[]
-  ratings           Rating[]
-
-  @@index([status, category, city])
-  @@index([customerId])
-  @@index([taskerId])
-}
-
-model Quote {
-  id           String      @id @default(cuid())
-  taskId       String
-  task         Task        @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  taskerId     String
-  tasker       User        @relation(fields: [taskerId], references: [id])
-  quoteText    String
-  amountPKR    Int
-  etaHours     Int
-  scopeSummary String
-  status       QuoteStatus @default(ACTIVE)
-  createdAt    DateTime    @default(now())
-  expiresAt    DateTime?
-
-  @@unique([taskId, taskerId])
-}
-
-model EscrowTransaction {
-  id               String            @id @default(cuid())
-  taskId           String            @unique
-  task             Task              @relation(fields: [taskId], references: [id])
-  customerId       String
-  taskerId         String
-  amount           Int
-  commissionPct    Int               @default(11)
-  commissionAmount Int
-  netAmount        Int
-  status           EscrowStatus      @default(FUNDED)
-  paymentMethod    String?
-  paymentReference String?
-  createdAt        DateTime          @default(now())
-  escrowedAt       DateTime?
-  autoReleaseAt    DateTime?
-  releasedAt       DateTime?
-  refundedAt       DateTime?
-  payout           Payout?
-  fbrRecords       FBRReportRecord[]
-}
-
-model Payout {
-  id                  String            @id @default(cuid())
-  escrowTransactionId String            @unique
-  escrowTransaction   EscrowTransaction @relation(fields: [escrowTransactionId], references: [id])
-  taskerId            String
-  tasker              User              @relation(fields: [taskerId], references: [id])
-  grossAmount         Int
-  commissionAmount    Int
-  netAmount           Int
-  paymentMethod       String            @default("bank_transfer")
-  status              PayoutStatus      @default(PENDING)
-  paidAt              DateTime?
-  createdAt           DateTime          @default(now())
-}
-
-model Message {
-  id              String          @id @default(cuid())
-  taskId          String
-  task            Task            @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  senderId        String
-  sender          User            @relation(fields: [senderId], references: [id])
-  channelType     MessageChannel  @default(IN_APP)
-  body            String
-  visibilityState VisibilityState @default(ACTIVE)
-  createdAt       DateTime        @default(now())
-  flagged         Boolean         @default(false)
-
-  @@index([taskId, createdAt])
-}
-
-model Rating {
-  id              String   @id @default(cuid())
-  taskId          String
-  task            Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  fromUserId      String
-  fromUser        User     @relation("RatingsGiven", fields: [fromUserId], references: [id])
-  toUserId        String
-  toUser          User     @relation("RatingsReceived", fields: [toUserId], references: [id])
-  overall         Int
-  punctuality     Int
-  professionalism Int
-  communication   Int
-  comment         String?
-  createdAt       DateTime @default(now())
-
-  @@unique([taskId, fromUserId])
-}
-
-model FBRReportRecord {
-  id                  String             @id @default(cuid())
-  reportMonth         DateTime
-  sellerId            String
-  seller              User               @relation(fields: [sellerId], references: [id])
-  taskId              String?
-  transactionId       String?
-  grossSales          Int
-  commissionAmount    Int
-  netPayout           Int
-  status              FBRStatus          @default(PENDING)
-  createdAt           DateTime           @default(now())
-  escrowTransactionId String?
-  escrowTransaction   EscrowTransaction? @relation(fields: [escrowTransactionId], references: [id])
-
-  @@index([reportMonth, sellerId])
+enum AuthTokenPurpose {
+  PASSWORD_RESET
+  EMAIL_VERIFICATION
 }
 
 enum UserType {
@@ -376,82 +255,4 @@ enum UserStatus {
   PENDING_VERIFICATION
   SUSPENDED
   BANNED
-}
-
-enum VerificationTier {
-  BASIC
-  TRUSTED
-  HIGH_TRUST
-}
-
-enum BackgroundStatus {
-  PENDING
-  APPROVED
-  REJECTED
-}
-
-enum ProfileStatus {
-  ACTIVE
-  INACTIVE
-  UNDER_REVIEW
-}
-
-enum TaskStatus {
-  OPEN
-  MATCHED
-  ASSIGNED
-  ESCROW_ACTIVE
-  IN_PROGRESS
-  COMPLETED
-  CANCELLED
-  DISPUTED
-  EXPIRED
-}
-
-enum AddressMode {
-  HIDDEN
-  DISCLOSED_AFTER_ESCROW
-}
-
-enum QuoteStatus {
-  ACTIVE
-  ACCEPTED
-  REJECTED
-  EXPIRED
-  WITHDRAWN
-}
-
-enum EscrowStatus {
-  PENDING
-  FUNDED
-  RELEASED
-  REFUNDED
-  DISPUTED
-  FAILED
-}
-
-enum PayoutStatus {
-  PENDING
-  PROCESSING
-  PAID
-  FAILED
-}
-
-enum MessageChannel {
-  IN_APP
-  VOICE_PROXY
-  SYSTEM
-}
-
-enum VisibilityState {
-  ACTIVE
-  MASKED
-  READ_ONLY
-  CLOSED
-}
-
-enum FBRStatus {
-  PENDING
-  GENERATED
-  ARCHIVED
 }

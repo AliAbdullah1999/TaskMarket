@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { connection } from "next/server";
 import { SiteFooter, SiteHeader } from "@/components/site-header";
+import { VerifyEmailBanner } from "@/components/verify-email-banner";
 import { WorkspaceSidebar } from "@/components/workspace-sidebar";
 import { getCurrentUser } from "@/lib/auth";
 import { APP_NAME } from "@/lib/constants";
@@ -25,6 +26,9 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
             <div className="flex flex-1">
               {user ? <WorkspaceSidebar userType={user.userType} fullName={user.fullName} /> : null}
               <div className="flex min-w-0 flex-1 flex-col">
+                {user && !user.emailVerifiedAt && (user.userType === "CANDIDATE" || user.userType === "EMPLOYER") ? (
+                  <VerifyEmailBanner email={user.email} userType={user.userType} />
+                ) : null}
                 <div className="flex-1">{children}</div>
                 {!user ? <SiteFooter /> : null}
               </div>

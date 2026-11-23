@@ -6,7 +6,7 @@ import { Pagination, pageParam, paginate } from "@/components/pagination";
 import { EmptyState, PageHeader, inputClass } from "@/components/ui";
 import { CITIES, JOB_CATEGORIES, PAGE_SIZE } from "@/lib/constants";
 import { prisma } from "@/lib/db";
-import { activeJobWhere } from "@/lib/entitlements";
+import { publicJobWhere } from "@/lib/entitlements";
 
 export const metadata: Metadata = { title: "Find jobs" };
 
@@ -21,7 +21,7 @@ export default async function JobsPage(props: PageProps<"/jobs">) {
   const city = (CITIES as readonly string[]).includes(one(params.city)) ? one(params.city) : "";
 
   // Every filter is ANDed so they narrow results together.
-  const filters: Prisma.JobWhereInput[] = [activeJobWhere(new Date())];
+  const filters: Prisma.JobWhereInput[] = [publicJobWhere(new Date())];
   if (category) filters.push({ category });
   if (city) filters.push({ city });
   if (q) {

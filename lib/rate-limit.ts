@@ -17,6 +17,12 @@ export const RATE_LIMITS = {
   passwordChange: { limit: 5, windowSeconds: 15 * 60 },
   membershipRequest: { limit: 6, windowSeconds: 60 * 60 },
   accountDeletion: { limit: 5, windowSeconds: 15 * 60 },
+  /** Reset emails to one address; further requests in the window are silently ignored. */
+  passwordResetPerEmail: { limit: 3, windowSeconds: 60 * 60 },
+  passwordResetPerIp: { limit: 10, windowSeconds: 60 * 60 },
+  verificationResend: { limit: 3, windowSeconds: 60 * 60 },
+  /** Invitations one employer may send to candidates per day. */
+  candidateInvites: { limit: 30, windowSeconds: 24 * 60 * 60 },
 } satisfies Record<string, RateLimitRule>;
 
 /** Keys never contain raw emails or addresses; they are hashed first. */

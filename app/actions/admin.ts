@@ -4,10 +4,7 @@ import { revalidatePath } from "next/cache";
 import { type ActionState, runAction, text } from "@/lib/action-state";
 import { getCurrentUser } from "@/lib/auth";
 import { reviewMembershipRequest, setAccountStatus } from "@/lib/services/memberships";
-
-// Legacy TaskMarket admin actions (NTN review, escrow disputes, payouts) live in
-// legacy/taskmarket/admin-actions.ts. Nothing imports that module, so Next.js does
-// not register them as callable server actions.
+import { removeJobAsAdmin } from "@/lib/services/moderation";
 
 export async function setUserStatus(_prev: ActionState, formData: FormData): Promise<ActionState> {
   return runAction(async () => {
@@ -18,6 +15,18 @@ export async function setUserStatus(_prev: ActionState, formData: FormData): Pro
     revalidatePath("/admin");
     revalidatePath("/admin/accounts");
     return status === "SUSPENDED" ? "Account suspended. The user is signed out immediately." : "Account reactivated.";
+  });
+}
+
+export async function removeJob(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  return runAction(async () => {
+    const jobId = text(formData, "jobId");
+    await removeJobAsAdmin(await getCurrentUser(), { jobId, reason: text(formData, "reason") });
+    revalidatePath("/admin");
+    revalidatePath("/admin/jobs");
+    revalidatePath("/jobs");
+    revalidatePath(`/jobs/${jobId}`);
+    return "Listing removed. The employer has been notified.";
   });
 }
 

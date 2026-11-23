@@ -5,6 +5,7 @@ import {
   GROWTH_ACTIVE_JOB_LIMIT,
   RENEWAL_WINDOW_DAYS,
 } from "./constants";
+import { fail } from "./errors";
 import { addDays, pktMonthStart, pktNextMonthStart } from "./time";
 
 /**
@@ -41,6 +42,26 @@ export async function hasActivePlan(db: Db, userId: string, plan: SubscriptionPl
 /** Jobs that are open and have not passed their expiry date. Compose with `AND: [...]`. */
 export function activeJobWhere(now: Date): Prisma.JobWhereInput {
   return { status: "OPEN", OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] };
+}
+
+/**
+ * Jobs the public may see and apply to: active listings whose employer account is in
+ * good standing. Suspending an employer therefore hides all of their listings at once.
+ */
+export function publicJobWhere(now: Date): Prisma.JobWhereInput {
+  return { AND: [activeJobWhere(now), { employer: { status: "ACTIVE" } }] };
+}
+
+/**
+ * Applying, publishing and inviting need a confirmed email address: employers and
+ * candidates contact each other by email, and it stops throwaway accounts being
+ * used to get around the free plan limits.
+ */
+export async function assertEmailVerified(db: Db, userId: string, activity: string) {
+  const user = await db.user.findUnique({ where: { id: userId }, select: { emailVerifiedAt: true } });
+  if (!user?.emailVerifiedAt) {
+    fail(`Please confirm your email address before ${activity}. Use the link we emailed you, or resend it from the banner at the top of the page.`);
+  }
 }
 
 export function isJobAcceptingApplications(job: { status: string; expiresAt: Date | null }, now = new Date()) {

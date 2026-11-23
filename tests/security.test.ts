@@ -128,6 +128,7 @@ describe("session revocation", () => {
 describe("data rights", () => {
   test("export contains the user's own data and never the password hash", async () => {
     const user = await registerUser(base);
+    await prisma.user.update({ where: { id: user.id }, data: { emailVerifiedAt: new Date() } });
     const employer = await createUser("EMPLOYER");
     const job = await createJob(employer.id);
     await submitApplication(user, { jobId: job.id, coverLetter: "Hello there" });
@@ -149,6 +150,7 @@ describe("data rights", () => {
 
   test("deleting a candidate removes their profile and applications only", async () => {
     const user = await registerUser(base);
+    await prisma.user.update({ where: { id: user.id }, data: { emailVerifiedAt: new Date() } });
     const employer = await createUser("EMPLOYER");
     const job = await createJob(employer.id);
     await submitApplication(user, { jobId: job.id, coverLetter: "" });
@@ -171,7 +173,7 @@ describe("database access control", () => {
     const rows = await prisma.$queryRaw<{ relname: string; relrowsecurity: boolean }[]>`
       select c.relname, c.relrowsecurity from pg_class c join pg_namespace n on n.oid = c.relnamespace
       where n.nspname = 'public' and c.relkind = 'r' and c.relname <> '_prisma_migrations'`;
-    assert.ok(rows.length >= 15);
+    assert.ok(rows.length >= 10);
     assert.deepEqual(rows.filter((row) => !row.relrowsecurity).map((row) => row.relname), []);
   });
 });

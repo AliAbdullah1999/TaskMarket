@@ -63,7 +63,7 @@ export type RegistrationInput = {
 
 /**
  * Creates a candidate or employer account. The role is whitelisted here, so a
- * crafted request can never register an ADMIN (or legacy) account.
+ * crafted request can never register an ADMIN account.
  */
 export async function registerUser(input: RegistrationInput) {
   const fullName = input.fullName.trim();
@@ -199,6 +199,7 @@ export async function exportAccountData(actor: Actor | null) {
       status: true,
       createdAt: true,
       termsAcceptedAt: true,
+      emailVerifiedAt: true,
       candidateProfile: { select: { headline: true, summary: true, skills: true, experienceYears: true, isPublic: true, updatedAt: true } },
       employerProfile: { select: { companyName: true, website: true, industry: true, description: true, updatedAt: true } },
       applications: {
@@ -208,6 +209,14 @@ export async function exportAccountData(actor: Actor | null) {
       postedJobs: {
         orderBy: { createdAt: "desc" },
         select: { title: true, description: true, requirements: true, category: true, city: true, status: true, createdAt: true, expiresAt: true },
+      },
+      invitationsReceived: {
+        orderBy: { createdAt: "desc" },
+        select: { message: true, createdAt: true, job: { select: { title: true, city: true } } },
+      },
+      invitationsSent: {
+        orderBy: { createdAt: "desc" },
+        select: { message: true, createdAt: true, job: { select: { title: true } } },
       },
       subscriptions: {
         orderBy: { createdAt: "desc" },
@@ -221,7 +230,7 @@ export async function exportAccountData(actor: Actor | null) {
 
 /**
  * Permanently deletes the signed-in user's account and the data that belongs to
- * it (profile, applications, job listings, membership records). Requires the
+ * it (profile, applications, invitations, job listings, membership records). Requires the
  * current password, so a hijacked session alone cannot destroy an account.
  */
 export async function deleteAccount(actor: Actor | null, input: { password: string; confirmation: string }) {
@@ -231,12 +240,5 @@ export async function deleteAccount(actor: Actor | null, input: { password: stri
   if (input.confirmation.trim().toUpperCase() !== "DELETE") fail("Type DELETE to confirm.");
   const user = await prisma.user.findUnique({ where: { id: actor.id }, select: { passwordHash: true } });
   if (!user || !(await verifyPassword(input.password, user.passwordHash))) fail("Your password is incorrect.");
-  try {
-    await prisma.user.delete({ where: { id: actor.id } });
-  } catch (error) {
-    if (typeof error === "object" && error !== null && "code" in error && error.code === "P2003") {
-      fail("This account has records from our earlier services marketplace and cannot be deleted automatically. Please contact support.");
-    }
-    throw error;
-  }
+  await prisma.user.delete({ where: { id: actor.id } });
 }

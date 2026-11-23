@@ -21,6 +21,7 @@ export default function PrivacyPage() {
           <li><strong>Candidate profile:</strong> your professional headline, summary, skills, years of experience, and whether you chose to make your profile visible to employers.</li>
           <li><strong>Employer profile:</strong> your company name, industry, website and description.</li>
           <li><strong>Jobs and applications:</strong> the job listings employers publish, and the applications and cover letters candidates submit, with their status.</li>
+          <li><strong>Invitations:</strong> when an employer invites a candidate to apply for a job, we record the invitation and any message the employer wrote.</li>
           <li><strong>Membership records:</strong> the plan you requested, its dates, and any payment reference you or our team entered. We do not collect or store card numbers or bank account details on this website.</li>
           <li><strong>Technical information:</strong> a sign-in cookie, and short-lived security counters used to limit repeated sign-in attempts. These counters store a one-way hash, not your email or network address. Our hosting provider may keep standard server logs.</li>
         </ul>
@@ -28,7 +29,8 @@ export default function PrivacyPage() {
 
       <LegalSection id="use" title="2. How we use your information">
         <ul>
-          <li>To create and secure your account, and to sign you in.</li>
+          <li>To create and secure your account, to confirm that your email address is yours, and to sign you in.</li>
+          <li>To send you service emails: confirming your email, resetting your password, updates on your applications, new applications to your jobs, invitations to apply, and membership notices. We do not send marketing emails.</li>
           <li>To show job listings, deliver applications to employers, and show you the status of your applications.</li>
           <li>To let employers with an active Employer Growth membership find candidate profiles that candidates chose to make visible.</li>
           <li>To review and activate membership requests.</li>
@@ -42,9 +44,9 @@ export default function PrivacyPage() {
         <ul>
           <li><strong>The public</strong> can see job listings and the hiring company&apos;s name, industry, description and website.</li>
           <li><strong>An employer you apply to</strong> can see your name, email address, city, career profile and cover letter for that application. They cannot see your mobile number.</li>
-          <li><strong>Employers with an active Employer Growth membership</strong> can see your name, city, headline, summary, skills and experience, but only if you turned on &quot;Show my profile in employer search&quot;. Your email address and mobile number are never shown in search. Your profile is private by default.</li>
+          <li><strong>Employers with an active Employer Growth membership</strong> can see your name, city, headline, summary, skills and experience, but only if you turned on &quot;Show my profile in employer search&quot;. Your email address and mobile number are never shown in search. These employers can send you an invitation to apply for one of their jobs; we deliver it by email on their behalf, and they do not receive your contact details unless you apply. Your profile is private by default.</li>
           <li><strong>Our administrators</strong> can see account details and membership records to operate the service. Administrative actions are logged.</li>
-          <li><strong>Service providers</strong> that host the website and database process data on our behalf.</li>
+          <li><strong>Service providers</strong> that host the website and database, and that deliver our emails, process data on our behalf.</li>
           <li><strong>Authorities</strong>, where we are required to by applicable law in Pakistan.</li>
         </ul>
       </LegalSection>
@@ -68,7 +70,7 @@ export default function PrivacyPage() {
 
       <LegalSection id="retention" title="6. How long we keep information">
         <p>
-          We keep your information while your account exists. When you delete your account, your profile, applications, job listings and membership records are removed from the live database. Copies may remain in backups for a limited time, and we may keep records we are legally required to keep. Security counters expire automatically within an hour.
+          We keep your information while your account exists. When you delete your account, your profile, applications, invitations, job listings and membership records are removed from the live database. Copies may remain in backups for a limited time, and we may keep records we are legally required to keep. Security counters expire automatically within a day, and password-reset and email-confirmation links within two days.
         </p>
       </LegalSection>
 

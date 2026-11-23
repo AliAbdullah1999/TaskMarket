@@ -3,6 +3,7 @@ import { MEMBERSHIP_DAYS, RENEWAL_WINDOW_DAYS } from "../constants";
 import { prisma } from "../db";
 import { activeMembershipWhere } from "../entitlements";
 import { fail } from "../errors";
+import { notifyMembershipReviewed } from "../notifications";
 import { RATE_LIMITS, enforceRateLimit, rateLimitKey } from "../rate-limit";
 import { addDays } from "../time";
 import { serializable } from "../transactions";
@@ -73,7 +74,7 @@ export async function cancelMembershipRequest(actor: Actor | null, subscriptionI
   if (!updated.count) fail("This request has already been reviewed or cancelled.");
 }
 
-function requireAdmin(actor: Actor | null): asserts actor is Actor {
+export function requireAdmin(actor: Actor | null): asserts actor is Actor {
   if (actor?.userType !== "ADMIN") fail("Admin access required.");
 }
 
@@ -108,7 +109,7 @@ export async function reviewMembershipRequest(
     const paymentReference = input.paymentReference.trim();
     if (!REFERENCE_PATTERN.test(paymentReference)) fail("Enter the confirmed external payment reference (3–100 characters) before approving.");
 
-    return serializable(async (tx) => {
+    const period = await serializable(async (tx) => {
       const request = await tx.subscription.findUnique({ where: { id: input.subscriptionId } });
       if (!request || request.status !== "REQUESTED") fail("This request has already been reviewed.");
 
@@ -141,18 +142,21 @@ export async function reviewMembershipRequest(
       });
       return { start, end };
     }, "This request changed while you were reviewing it. Refresh and try again.");
+    await notifyMembershipReviewed(input.subscriptionId);
+    return period;
   }
 
   if (input.decision === "reject") {
-    return prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx) => {
       const updated = await tx.subscription.updateMany({
         where: { id: input.subscriptionId, status: "REQUESTED" },
         data: { status: "REJECTED", reviewedAt: now, reviewedById: actor.id, reviewNote: note || null },
       });
       if (!updated.count) fail("This request has already been reviewed.");
       await logAdminAction(tx, actor.id, "MEMBERSHIP_REJECTED", { type: "Subscription", id: input.subscriptionId }, note ? { note } : undefined);
-      return null;
     });
+    await notifyMembershipReviewed(input.subscriptionId);
+    return null;
   }
 
   fail("Choose a valid review decision.");

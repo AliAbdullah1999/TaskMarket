@@ -52,7 +52,8 @@ export default function TermsPage() {
           <li>Listings must be accurate about the role, location, employment type and pay, and must comply with the laws of Pakistan, including employment and anti-discrimination laws.</li>
           <li>You must not charge candidates any fee, and you must not post listings for multi-level marketing, unlawful work, or anything misleading.</li>
           <li>Use candidate information only to assess and contact people about your own vacancies. Do not sell it, share it with third parties, or use it for marketing.</li>
-          <li>Job listings stay open for {JOB_LISTING_DAYS} days unless you close them sooner.</li>
+          <li>Job listings stay open for {JOB_LISTING_DAYS} days unless you close them sooner. We may remove a listing that breaks these rules, and we will tell you why.</li>
+          <li>Invitations to candidates must be about a genuine open vacancy of yours. Do not use them for advertising or repeated unwanted contact.</li>
         </ul>
       </LegalSection>
 

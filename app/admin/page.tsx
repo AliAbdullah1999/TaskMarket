@@ -15,6 +15,7 @@ const actionLabels: Record<string, string> = {
   MEMBERSHIP_REJECTED: "Rejected membership",
   ACCOUNT_SUSPENDED: "Suspended account",
   ACCOUNT_REACTIVATED: "Reactivated account",
+  JOB_REMOVED: "Removed job listing",
 };
 
 export default async function AdminPage() {
@@ -117,7 +118,10 @@ export default async function AdminPage() {
       <Card className="mt-8 p-5 sm:p-7">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-bold tracking-tight text-slate-950">Recent administrative actions</h2>
-          <Link href="/admin/accounts" className="text-sm font-semibold text-emerald-700 hover:underline">Manage accounts →</Link>
+          <div className="flex items-center gap-4">
+            <Link href="/admin/jobs" className="text-sm font-semibold text-emerald-700 hover:underline">Moderate jobs →</Link>
+            <Link href="/admin/accounts" className="text-sm font-semibold text-emerald-700 hover:underline">Manage accounts →</Link>
+          </div>
         </div>
         {auditLog.length === 0 ? (
           <p className="mt-4 text-sm text-slate-500">No administrative actions recorded yet.</p>

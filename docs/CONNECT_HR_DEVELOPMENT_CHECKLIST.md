@@ -102,6 +102,21 @@ How each item was verified:
 - [x] 82 end-to-end checks, all passing
 - [x] Typecheck, lint and build all pass
 
+### Phase 11: MVP completion (23 November 2026)
+- [x] Email transport (Resend) with console output in development and an in-memory outbox in tests
+- [x] Email confirmation, required before applying, publishing or inviting; existing accounts grandfathered
+- [x] Password reset by single-use emailed link
+- [x] Notification emails: new application, status change, membership decision, renewal reminder, listing removed
+- [x] Listings of suspended employers hidden everywhere; admin job removal with reason, audit entry and email
+- [x] Growth employers can invite searched candidates to apply; candidates see invitations in the app
+- [x] Daily maintenance endpoint, health check, sitemap, CI workflow, production guard on the demo seed
+- [x] TaskMarket code, tables and data removed (destructive migration); old addresses redirect to jobs
+- [x] Email can be sent through Gmail or any SMTP mailbox as well as Resend
+- [x] `npm audit` reports 0 vulnerabilities (patched `effect` and `deepmerge-ts` pinned through `overrides`)
+- [x] 100 integration tests and 146 end-to-end checks, all passing
+- [ ] Visual QA of the new screens in a browser (not done)
+- [ ] Email credentials (Gmail app password or Resend) and production environment variables (needs the owner)
+
 ### Phase 10: Final review
 - [x] Legacy routes, actions and endpoints isolated
 - [x] Environment documented (`.env.example`, deployment guide)

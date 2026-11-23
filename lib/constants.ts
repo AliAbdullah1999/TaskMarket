@@ -37,8 +37,12 @@ export const PLANS = {
     audience: "For employers",
     name: "Employer Growth",
     price: PLAN_PRICES.EMPLOYER_GROWTH,
-    description: "Hire for more roles at once and search candidates who have shared their profiles.",
-    benefits: [`Up to ${GROWTH_ACTIVE_JOB_LIMIT} active job listings`, "Search candidate profiles shared with employers"],
+    description: "Hire for more roles at once, search candidates who have shared their profiles, and invite them to apply.",
+    benefits: [
+      `Up to ${GROWTH_ACTIVE_JOB_LIMIT} active job listings`,
+      "Search candidate profiles shared with employers",
+      "Invite candidates you find to apply to your jobs",
+    ],
     freeName: "Employer Free",
     freeBenefits: [`${FREE_ACTIVE_JOB_LIMIT} active job listing at a time`],
   },
@@ -61,28 +65,6 @@ export const JOB_CATEGORIES = [
   "Other",
 ] as const;
 
-/** Legacy marketplace settings retained for existing records and routes. */
-export const COMMISSION_PCT = 11;
-
-/** Escrow auto-releases this many hours after the tasker marks a job complete. */
-export const AUTO_RELEASE_HOURS = 48;
-
-export const CATEGORIES = [
-  "Home Care",
-  "Handyman",
-  "Tutoring",
-  "Freelance",
-  "Digital Services",
-] as const;
-
-export const CATEGORY_DESCRIPTIONS: Record<(typeof CATEGORIES)[number], string> = {
-  "Home Care": "Cleaning, cooking, laundry and domestic help.",
-  Handyman: "Plumbing, electrical, carpentry and repairs.",
-  Tutoring: "School, O/A-Level, Quran and language tutors.",
-  Freelance: "Writing, admin support, research and translation.",
-  "Digital Services": "Design, websites, social media and video.",
-};
-
 export const CITIES = [
   "Karachi",
   "Lahore",
@@ -95,13 +77,6 @@ export const CITIES = [
   "Remote",
 ] as const;
 
-export const PAYMENT_METHODS = [
-  { value: "jazzcash", label: "JazzCash" },
-  { value: "easypaisa", label: "Easypaisa" },
-  { value: "card", label: "Debit / credit card" },
-  { value: "bank_transfer", label: "Bank transfer (IBFT)" },
-] as const;
-
 export const TIME_ZONE = "Asia/Karachi";
 
 /** Public contact address for support, privacy and security requests. Set NEXT_PUBLIC_SUPPORT_EMAIL in production. */
@@ -109,5 +84,5 @@ export const SUPPORT_EMAIL = process.env.NEXT_PUBLIC_SUPPORT_EMAIL || "";
 /** The legal name of the business that operates the platform. Set NEXT_PUBLIC_LEGAL_ENTITY in production. */
 export const LEGAL_ENTITY = process.env.NEXT_PUBLIC_LEGAL_ENTITY || APP_NAME;
 /** Shown on the legal pages. Update whenever the Terms or Privacy Policy change. */
-export const LEGAL_LAST_UPDATED = "20 November 2026";
+export const LEGAL_LAST_UPDATED = "23 November 2026";
 export const MINIMUM_AGE = 18;

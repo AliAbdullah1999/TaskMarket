@@ -154,7 +154,7 @@ The 82 checks cover:
 
 1. **Responsive layout hasn't been checked visually.** The layouts use responsive utilities and the tablet navigation gap is fixed in code, but I haven't looked at them in a browser at phone, tablet and desktop widths. Do this before launch.
 2. **No rate limiting** on login or signup. Use a proxy or WAF (see the deployment guide).
-3. **No email verification and no password reset by email.** Both need an email provider, which isn't in scope. Users can change their password while signed in, and admins can suspend accounts.
+3. **Email needs a provider account.** Email confirmation, password reset and notifications were added on 23 November 2026 (see the README), but nothing is delivered until Resend is configured.
 4. **Email can't be changed** by the user. It's the sign-in identity.
 5. **Forms need JavaScript.** `ActionForm` submits through a transition to keep the user's input when validation fails, so there's no progressive enhancement for these forms.
 6. **No route-level loading skeletons**, because they break HTTP status codes for redirects and 404s (see §4). Form buttons show pending states.
@@ -169,7 +169,7 @@ The 82 checks cover:
 
 - Visual QA at 375, 768 and 1280 px, then fix any issues found.
 - Add login and signup rate limiting at the edge.
-- Add a password reset by email once an email provider is chosen.
+- Configure Resend (`RESEND_API_KEY`, `EMAIL_FROM`, `APP_URL`) and verify the sending domain.
 - Future cleanup (separate PR, after confirming legacy data can be archived): remove `legacy/`, `app/actions/tasks.ts`, `app/actions/profile.ts`, `app/tasks/**`, `app/taskers/**`, `app/compliance`, `app/api/*`, the legacy components (`task-card`, `tasker-card`, `message-thread`, `rating-form`), `lib/escrow.ts`, `lib/fbr-report.ts`, `lib/compliance.ts`, `lib/address-crypto.ts`, and finally the legacy Prisma models, through a migration with a data export first.
 - Rename the seeded demo admin email (`admin@careermarket.pk`) if demo data is used for public demos.
 - Commit the work on a feature branch and open a PR.

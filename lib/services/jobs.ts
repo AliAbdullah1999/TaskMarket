@@ -1,7 +1,7 @@
 import { EmploymentType, WorkplaceType, type UserType } from "@prisma/client";
 import { CITIES, JOB_CATEGORIES, JOB_LISTING_DAYS } from "../constants";
 import { prisma } from "../db";
-import { getEmployerJobAllowance } from "../entitlements";
+import { assertEmailVerified, getEmployerJobAllowance } from "../entitlements";
 import { fail } from "../errors";
 import { addDays } from "../time";
 import { serializable } from "../transactions";
@@ -72,6 +72,7 @@ export async function createJobForEmployer(actor: Actor | null, input: JobInput,
   requireEmployer(actor);
   const data = validateJobInput(input);
   return serializable(async (tx) => {
+    await assertEmailVerified(tx, actor.id, "publishing a job");
     const allowance = await getEmployerJobAllowance(tx, actor.id, now);
     if (!allowance.canPublish) {
       fail(

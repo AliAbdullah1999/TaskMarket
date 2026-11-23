@@ -1,7 +1,8 @@
 import type { ApplicationStatus } from "@prisma/client";
 import { prisma } from "../db";
-import { getCandidateApplicationAllowance, isJobAcceptingApplications } from "../entitlements";
+import { assertEmailVerified, getCandidateApplicationAllowance, isJobAcceptingApplications } from "../entitlements";
 import { fail } from "../errors";
+import { notifyApplicationReceived, notifyApplicationStatus } from "../notifications";
 import { isUniqueViolation, serializable } from "../transactions";
 import type { Actor } from "./jobs";
 
@@ -20,14 +21,17 @@ export async function submitApplication(
   if (coverLetter.length > 3000) fail("Cover letter must be 3,000 characters or fewer.");
   if (!input.jobId) fail("This job could not be found.");
 
+  let application;
   try {
-    return await serializable(async (tx) => {
+    application = await serializable(async (tx) => {
+      await assertEmailVerified(tx, actor.id, "applying for jobs");
       const job = await tx.job.findUnique({
         where: { id: input.jobId },
-        select: { id: true, employerId: true, status: true, expiresAt: true },
+        select: { id: true, employerId: true, status: true, expiresAt: true, employer: { select: { status: true } } },
       });
       if (!job) fail("This job could not be found.");
-      if (!isJobAcceptingApplications(job, now)) fail("This job is no longer accepting applications.");
+      // Listings of suspended employers are hidden, so they cannot be applied to either.
+      if (!isJobAcceptingApplications(job, now) || job.employer.status !== "ACTIVE") fail("This job is no longer accepting applications.");
 
       const duplicate = await tx.jobApplication.findUnique({
         where: { jobId_candidateId: { jobId: job.id, candidateId: actor.id } },
@@ -49,6 +53,8 @@ export async function submitApplication(
     if (isUniqueViolation(error)) fail("You have already applied for this job.");
     throw error;
   }
+  await notifyApplicationReceived(application.id);
+  return application;
 }
 
 export async function updateApplicationStatusForEmployer(
@@ -71,5 +77,6 @@ export async function updateApplicationStatusForEmployer(
     data: { status },
   });
   if (!updated.count) fail("This application has already been finalised and can no longer be changed.");
+  if (application.status !== status) await notifyApplicationStatus(application.id);
   return { jobId: application.jobId };
 }

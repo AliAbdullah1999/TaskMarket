@@ -22,6 +22,14 @@ const nextConfig: NextConfig = {
   distDir: process.env.NEXT_DIST_DIR || ".next",
   // Do not advertise the framework in an X-Powered-By header.
   poweredByHeader: false,
+  // Addresses from the earlier services marketplace lead to the jobs area.
+  async redirects() {
+    return [
+      { source: "/tasks/:path*", destination: "/jobs", permanent: false },
+      { source: "/taskers/:path*", destination: "/jobs", permanent: false },
+      { source: "/compliance", destination: "/", permanent: false },
+    ];
+  },
   async rewrites() {
     return [{ source: "/.well-known/security.txt", destination: "/security.txt" }];
   },

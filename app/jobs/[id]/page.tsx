@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { removeJob } from "@/app/actions/admin";
 import { applyToJob, closeJob } from "@/app/actions/jobs";
 import { ActionForm, ConfirmSubmitButton, SubmitButton } from "@/components/action-form";
 import { APPLICANT_SELECT, ApplicantList } from "@/components/applicant-list";
@@ -13,8 +14,9 @@ import { applicationStatusMeta, employmentLabels, formatDate, formatSalary, jobS
 
 export async function generateMetadata(props: PageProps<"/jobs/[id]">): Promise<Metadata> {
   const { id } = await props.params;
-  const job = await prisma.job.findUnique({ where: { id }, select: { title: true } });
-  return { title: job?.title ?? "Job" };
+  const job = await prisma.job.findUnique({ where: { id }, select: { title: true, status: true, employer: { select: { status: true } } } });
+  // Removed listings and listings of suspended employers do not reveal their title.
+  return { title: job && job.status !== "ARCHIVED" && job.employer.status === "ACTIVE" ? job.title : "Job" };
 }
 
 const notices: Record<string, string> = {
@@ -30,7 +32,7 @@ export default async function JobDetailPage(props: PageProps<"/jobs/[id]">) {
     prisma.job.findUnique({
       where: { id },
       include: {
-        employer: { select: { id: true, fullName: true, employerProfile: true } },
+        employer: { select: { id: true, fullName: true, status: true, employerProfile: true } },
         _count: { select: { applications: true } },
       },
     }),
@@ -40,7 +42,8 @@ export default async function JobDetailPage(props: PageProps<"/jobs/[id]">) {
   const now = new Date();
   const isOwner = user?.userType === "EMPLOYER" && user.id === job.employerId;
   const isCandidate = user?.userType === "CANDIDATE";
-  const [applications, myApplication, allowance] = await Promise.all([
+  const isAdmin = user?.userType === "ADMIN";
+  const [applications, myApplication, allowance, invitation] = await Promise.all([
     isOwner ? prisma.jobApplication.findMany({ where: { jobId: job.id }, orderBy: { createdAt: "desc" }, select: APPLICANT_SELECT }) : null,
     isCandidate
       ? prisma.jobApplication.findUnique({
@@ -49,9 +52,20 @@ export default async function JobDetailPage(props: PageProps<"/jobs/[id]">) {
         })
       : null,
     isCandidate ? getCandidateApplicationAllowance(prisma, user.id, now) : null,
+    isCandidate
+      ? prisma.jobInvitation.findUnique({
+          where: { jobId_candidateId: { jobId: job.id, candidateId: user.id } },
+          select: { message: true, createdAt: true },
+        })
+      : null,
   ]);
 
-  const open = isJobAcceptingApplications(job, now);
+  // Listings removed by an administrator, or whose employer is suspended, are hidden from
+  // everyone except the owner, administrators and candidates who already applied.
+  const hidden = job.status === "ARCHIVED" || job.employer.status !== "ACTIVE";
+  if (hidden && !isOwner && !isAdmin && !myApplication) notFound();
+
+  const open = !hidden && isJobAcceptingApplications(job, now);
   const status = jobStatusMeta(job, now);
   const salary = formatSalary(job.salaryMin, job.salaryMax, " per month") ?? "Not disclosed";
   const company = job.employer.employerProfile?.companyName ?? job.employer.fullName;
@@ -63,6 +77,14 @@ export default async function JobDetailPage(props: PageProps<"/jobs/[id]">) {
         ← {isOwner ? "Manage jobs" : "Browse jobs"}
       </Link>
       {noticeText ? <Notice tone="success" className="mt-4">{noticeText}</Notice> : null}
+      {job.status === "ARCHIVED" && (isOwner || isAdmin) ? (
+        <Notice tone="error" title="This listing was removed by our team" className="mt-4">
+          Reason: {job.removedReason ?? "It did not meet our listing rules."} It is no longer visible to candidates and cannot be edited or reopened.
+        </Notice>
+      ) : null}
+      {isAdmin && job.employer.status !== "ACTIVE" ? (
+        <Notice tone="warning" className="mt-4">The employer account is {job.employer.status.toLowerCase()}, so this listing is hidden from the public.</Notice>
+      ) : null}
       <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="min-w-0 space-y-6">
           <Card>
@@ -158,6 +180,11 @@ export default async function JobDetailPage(props: PageProps<"/jobs/[id]">) {
                 </Notice>
               ) : (
                 <>
+                  {invitation ? (
+                    <Notice tone="success" title={`${company} invited you to apply`} className="mb-4">
+                      {invitation.message ? <span className="whitespace-pre-line">{invitation.message}</span> : `Invited on ${formatDate(invitation.createdAt)}.`}
+                    </Notice>
+                  ) : null}
                   <h2 className="text-lg font-bold tracking-tight text-slate-950">Apply for this job</h2>
                   <p className="mt-2 text-sm leading-6 text-slate-600">
                     {allowance.isPro
@@ -176,6 +203,20 @@ export default async function JobDetailPage(props: PageProps<"/jobs/[id]">) {
                   </ActionForm>
                 </>
               )}
+            </Card>
+          ) : isAdmin && job.status !== "ARCHIVED" ? (
+            <Card className="border-rose-200">
+              <h2 className="text-lg font-bold text-rose-900">Moderation</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-600">Remove this listing if it breaks the listing rules. The employer is emailed the reason.</p>
+              <ActionForm action={removeJob} className="mt-4 space-y-3">
+                <input type="hidden" name="jobId" value={job.id} />
+                <Field label="Reason for removal">
+                  <textarea name="reason" rows={3} required minLength={5} maxLength={500} className={inputClass} placeholder="e.g. Asks candidates to pay a fee" />
+                </Field>
+                <ConfirmSubmitButton title="Remove this listing?" message="It will be hidden from candidates and can no longer be edited or reopened. This cannot be undone." confirmLabel="Remove listing">
+                  Remove listing
+                </ConfirmSubmitButton>
+              </ActionForm>
             </Card>
           ) : !user && open ? (
             <Card>

@@ -5,18 +5,20 @@ import { JobCard } from "@/components/job-card";
 import { getCurrentUser } from "@/lib/auth";
 import { JOB_CATEGORIES } from "@/lib/constants";
 import { prisma } from "@/lib/db";
+import { publicJobWhere } from "@/lib/entitlements";
 import { redirect } from "next/navigation";
 
 export default async function Home() {
   const user = await getCurrentUser();
   if (user) redirect("/dashboard");
 
+  const now = new Date();
   const [openJobs, employers, candidates, jobs] = await Promise.all([
-    prisma.job.count({ where: { status: "OPEN", OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] } }),
+    prisma.job.count({ where: publicJobWhere(now) }),
     prisma.user.count({ where: { userType: "EMPLOYER" } }),
     prisma.user.count({ where: { userType: "CANDIDATE" } }),
     prisma.job.findMany({
-      where: { status: "OPEN", OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] },
+      where: publicJobWhere(now),
       orderBy: { createdAt: "desc" },
       take: 6,
       include: {

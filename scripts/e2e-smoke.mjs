@@ -26,6 +26,8 @@ if (!/test/i.test(new URL(DB || "postgres://x/none").pathname)) {
 const db = new pg.Client({ connectionString: DB.replace(/\?.*$/, "") });
 await db.connect();
 const one = async (sql, params = []) => (await db.query(sql, params)).rows[0];
+/** Stands in for clicking the emailed confirmation link (emails are not delivered in this environment). */
+const confirmEmail = (email) => db.query(`update "User" set "emailVerifiedAt" = now() at time zone 'utc' where email = $1`, [email]);
 
 const actionIds = Object.fromEntries(Object.entries(manifest.node).map(([id, entry]) => [entry.exportedName, id]));
 const results = [];
@@ -93,6 +95,24 @@ const signupEmployer = await act("/signup", "signup", { userType: "EMPLOYER", fu
 expectRedirect("Employer registration redirects to profile setup", signupEmployer, /^\/profile\?welcome=1/);
 const E1 = signupEmployer.cookie;
 
+// ---------------------------------------------------------------- Email confirmation gate
+record("Unconfirmed members see the confirmation banner", (await get("/dashboard", C1)).text.includes("Confirm your email address"));
+expectText("Unconfirmed employers cannot publish a job", await act("/jobs/new", "createJob", job("E2E Unconfirmed Employer Role"), E1), /confirm your email/);
+expectText("Confirmation email can be resent", await act("/dashboard", "resendVerificationEmail", {}, C1), /Confirmation email sent/);
+record("Invalid confirmation link is rejected", (await get("/verify-email?token=not-a-real-token")).text.includes("Link not valid"));
+await confirmEmail(`cand${stamp}@e2e.test`);
+await confirmEmail(`emp${stamp}@e2e.test`);
+record("Banner disappears once the email is confirmed", !(await get("/dashboard", C1)).text.includes("Confirm your email address"));
+
+// ---------------------------------------------------------------- Password reset
+record("Forgot-password page renders", (await get("/forgot-password")).status === 200);
+record("Login page links to password reset", (await get("/login")).text.includes('href="/forgot-password"'));
+expectText("Reset request gives the same answer for unknown emails", await act("/forgot-password", "forgotPassword", { email: `nobody${stamp}@e2e.test` }), /If an account exists/);
+expectText("Reset request for a real account gives the same answer", await act("/forgot-password", "forgotPassword", { email: `cand${stamp}@e2e.test` }), /If an account exists/);
+record("A reset link is stored only as a hash", (await one(`select count(*)::int as n from "AuthToken" t join "User" u on u.id = t."userId" where u.email = $1 and t.purpose = 'PASSWORD_RESET' and length(t."tokenHash") = 64`, [`cand${stamp}@e2e.test`])).n === 1);
+record("Invalid reset link shows an expiry notice", (await get("/reset-password?token=not-a-real-token")).text.includes("invalid or has expired"));
+expectText("Invalid reset token cannot change a password", await act("/reset-password", "resetPassword", { token: "not-a-real-token", newPassword: "brand-new-pass-9", confirmPassword: "brand-new-pass-9" }), /invalid or has expired/);
+
 expectText("Duplicate email is rejected", await act("/signup", "signup", { userType: "CANDIDATE", fullName: "Dup", email: `CAND${stamp}@e2e.test`, city: "Karachi", password: "candidate1", acceptTerms: "on" }), /already exists/);
 expectText("Signup cannot create an admin", await act("/signup", "signup", { userType: "ADMIN", fullName: "Evil", email: `evil${stamp}@e2e.test`, city: "Karachi", password: "candidate1", acceptTerms: "on" }), /candidate or employer/);
 expectText("Invalid credentials are rejected", await act("/login", "login", { email: `cand${stamp}@e2e.test`, password: "wrongpass1" }), /Incorrect email or password/);
@@ -115,6 +135,7 @@ expectText("Candidate can save a public profile", await act("/profile", "updateC
 expectText("Employer cannot save a candidate profile", await act("/profile", "updateCandidateProfile", { headline: "x", summary: "", skills: "", experienceYears: "", isPublic: "on" }, E1), /Candidate access required/);
 const signupPrivate = await act("/signup", "signup", { userType: "CANDIDATE", fullName: "Private Person", email: `private${stamp}@e2e.test`, city: "Lahore", password: "private123", acceptTerms: "on" });
 const C2 = signupPrivate.cookie;
+await confirmEmail(`private${stamp}@e2e.test`);
 await act("/profile", "updateCandidateProfile", { headline: "Hidden accountant", summary: "", skills: "Accounting", experienceYears: "6" }, C2);
 
 // ---------------------------------------------------------------- Employer jobs, free limit
@@ -152,6 +173,17 @@ record("Private profiles do not appear in search", !(await get("/candidates?q=Hi
 const privateProfile = await one(`select p.id from "CandidateProfile" p join "User" u on u.id = p."userId" where u.email = $1`, [`private${stamp}@e2e.test`]);
 record("Private profile page returns 404", (await get(`/candidates/${privateProfile.id}`, E1)).status === 404);
 
+// ---------------------------------------------------------------- Invitations
+const publicProfile = await one(`select p.id from "CandidateProfile" p join "User" u on u.id = p."userId" where u.email = $1`, [`cand${stamp}@e2e.test`]);
+record("Candidate profile page offers an invitation form", (await get(`/candidates/${publicProfile.id}`, E1)).text.includes("Invite to apply"));
+expectText("Growth employer can invite a candidate", await act(`/candidates/${publicProfile.id}`, "inviteCandidate", { profileId: publicProfile.id, jobId: jobIds[3], message: "We liked your profile." }, E1), /Invitation sent/);
+expectText("Duplicate invitation is rejected", await act(`/candidates/${publicProfile.id}`, "inviteCandidate", { profileId: publicProfile.id, jobId: jobIds[3], message: "" }, E1), /already invited/);
+expectText("Private candidates cannot be invited", await act(`/candidates/${privateProfile.id}`, "inviteCandidate", { profileId: privateProfile.id, jobId: jobIds[3], message: "" }, E1), /no longer available/);
+expectText("Employers cannot invite to someone else's job", await act(`/candidates/${publicProfile.id}`, "inviteCandidate", { profileId: publicProfile.id, jobId: jobIds[3], message: "" }, E2), /Employer Growth|your own job/);
+const invited = await get("/applications", C1);
+record("Candidate sees the invitation and message", invited.text.includes("Invitations to apply") && invited.text.includes("We liked your profile."));
+record("Invited candidate sees the invitation on the job page", (await get(`/jobs/${jobIds[3]}`, C1)).text.includes("invited you to apply"));
+
 // ---------------------------------------------------------------- Applications + limits
 for (const [index, id] of jobIds.slice(0, 3).entries()) {
   expectText(`Candidate application ${index + 1} of 3 succeeds`, await act(`/jobs/${id}`, "applyToJob", { jobId: id, coverLetter: "I am interested." }, C1), /Application submitted/);
@@ -178,6 +210,7 @@ expectText("Another employer cannot close the job", await act(`/jobs/${jobIds[0]
 expectRedirect("Owner can edit the job", await act(`/jobs/${jobIds[4]}/edit`, "updateJob", { jobId: jobIds[4], ...job("E2E Office Coordinator 5 (edited)") }, E1), /notice=updated/);
 expectText("Owner can close the job", await act(`/jobs/${jobIds[4]}`, "closeJob", { jobId: jobIds[4] }, E1), /Job listing closed/);
 const signupThird = await act("/signup", "signup", { userType: "CANDIDATE", fullName: "Third Candidate", email: `third${stamp}@e2e.test`, city: "Multan", password: "third1234", acceptTerms: "on" });
+await confirmEmail(`third${stamp}@e2e.test`);
 expectText("Closed job rejects applications", await act(`/jobs/${jobIds[4]}`, "applyToJob", { jobId: jobIds[4], coverLetter: "" }, signupThird.cookie), /no longer accepting/);
 const listing = await get("/jobs?q=E2E+Office", undefined);
 record("Closed jobs are excluded from public listings", listing.text.includes("E2E Office Coordinator 1") && !listing.text.includes("Coordinator 5 (edited)"));
@@ -204,6 +237,30 @@ const counts = await one(`select
 record("Admin dashboard shows database-driven figures", adminPage.status === 200 && [counts.candidates, counts.employers, counts.applications].every((n) => adminPage.text.includes(`>${n.toLocaleString()}<`)), JSON.stringify(counts));
 record("Admin accounts and membership history pages load", (await get("/admin/accounts?q=E2E", A)).status === 200 && (await get("/admin/memberships", A)).status === 200);
 
+// ---------------------------------------------------------------- Moderation
+record("Admin job moderation page loads", (await get("/admin/jobs?q=E2E", A)).text.includes("E2E Office Coordinator 2"));
+expectText("Employers cannot remove listings", await act("/admin/jobs", "removeJob", { jobId: jobIds[1], reason: "Trying to remove my rival" }, E2), /Admin access required/);
+expectText("Removal needs a reason", await act("/admin/jobs", "removeJob", { jobId: jobIds[1], reason: "" }, A), /reason for removal/);
+expectText("Admin can remove a listing", await act("/admin/jobs", "removeJob", { jobId: jobIds[1], reason: "Listing asks candidates for a fee." }, A), /Listing removed/);
+record("Removed listing returns 404 to the public", (await get(`/jobs/${jobIds[1]}`)).status === 404);
+record("Removed listing is gone from public search", !(await get("/jobs?q=E2E+Office")).text.includes("E2E Office Coordinator 2"));
+const ownerRemoved = await get(`/jobs/${jobIds[1]}`, E1);
+record("Owner sees why the listing was removed", ownerRemoved.status === 200 && ownerRemoved.text.includes("Listing asks candidates for a fee."));
+record("Applicant can still open a removed listing they applied to", (await get(`/jobs/${jobIds[1]}`, C1)).status === 200);
+await db.query(`update "User" set status = 'SUSPENDED' where email = $1`, [`emp${stamp}@e2e.test`]);
+record("Jobs of a suspended employer are hidden from search", !(await get("/jobs?q=E2E+Office")).text.includes("E2E Office Coordinator 1"));
+record("Jobs of a suspended employer return 404 to guests", (await get(`/jobs/${jobIds[3]}`)).status === 404);
+await db.query(`update "User" set status = 'ACTIVE' where email = $1`, [`emp${stamp}@e2e.test`]);
+record("Jobs return when the employer is reactivated", (await get("/jobs?q=E2E+Office")).text.includes("E2E Office Coordinator 1"));
+
+// ---------------------------------------------------------------- Operations endpoints
+const health = await get("/api/health");
+record("Health check reports ok", health.status === 200 && /"status":"ok"/.test(health.text));
+record("Daily maintenance endpoint rejects callers without the secret", (await get("/api/cron/daily")).status === 401);
+const sitemap = await get("/sitemap.xml");
+record("Sitemap lists open jobs and omits removed ones", sitemap.status === 200 && sitemap.text.includes(`/jobs/${jobIds[0]}`) && !sitemap.text.includes(`/jobs/${jobIds[1]}`));
+record("robots.txt points at the sitemap", /Sitemap: .*\/sitemap\.xml/.test((await get("/robots.txt")).text));
+
 // ---------------------------------------------------------------- Expiry removes benefits
 await db.query(`update "Subscription" set "currentPeriodStart" = (now() at time zone 'utc') - interval '31 days', "currentPeriodEnd" = (now() at time zone 'utc') - interval '1 minute' where id = $1`, [e1Request.id]);
 expectText("Expired Growth membership loses candidate search", await get("/candidates", E1), /Included with/);
@@ -222,8 +279,9 @@ for (const [label, pathname, cookie] of [
 }
 record("Pricing does not advertise unimplemented benefits", !/priority placement|Unlimited applications to your vacancies/i.test((await get("/pricing")).text));
 expectRedirect("Legacy /tasks redirects to jobs", await get("/tasks"), /\/jobs$/);
-record("Legacy cron endpoint is retired (410)", (await get("/api/cron/auto-release")).status === 410);
-record("Legacy FBR report endpoint is retired (410)", (await get("/api/admin/fbr-report", A)).status === 410);
+expectRedirect("Legacy tasker pages redirect to jobs", await get("/taskers/abc"), /\/jobs$/);
+record("Legacy cron endpoint is gone (404)", (await get("/api/cron/auto-release")).status === 404);
+record("Legacy FBR report endpoint is gone (404)", (await get("/api/admin/fbr-report", A)).status === 404);
 // ---------------------------------------------------------------- Security headers and hardening
 const home = await get("/");
 const csp = home.headers.get("content-security-policy") ?? "";
@@ -248,6 +306,7 @@ expectText("Common passwords are rejected at signup", await act("/signup", "sign
 
 // Brute-force lockout: five wrong passwords, then even the right one is refused.
 const victim = await act("/signup", "signup", { userType: "CANDIDATE", fullName: "Lockout Target", email: `lock${stamp}@e2e.test`, city: "Karachi", password: "lockout-good-1", acceptTerms: "on" });
+await confirmEmail(`lock${stamp}@e2e.test`);
 for (let i = 0; i < 5; i += 1) await act("/login", "login", { email: `lock${stamp}@e2e.test`, password: `wrong-guess-${i}` });
 expectText("Account locks after five wrong passwords", await act("/login", "login", { email: `lock${stamp}@e2e.test`, password: "lockout-good-1" }), /Too many attempts/);
 const pinnedIp = "203.0.113.50";

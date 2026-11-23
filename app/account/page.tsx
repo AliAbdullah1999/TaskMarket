@@ -22,7 +22,7 @@ export default async function AccountPage() {
               <Field label="Full name">
                 <input name="fullName" required minLength={2} maxLength={100} autoComplete="name" defaultValue={user.fullName} className={inputClass} />
               </Field>
-              <Field label="Email" hint="Contact support to change the email you sign in with.">
+              <Field label="Email" hint={`${user.emailVerifiedAt ? "Confirmed." : "Not confirmed yet."} Contact support to change the email you sign in with.`}>
                 <input value={user.email} readOnly disabled className={`${inputClass} bg-slate-50 text-slate-500`} />
               </Field>
               <Field label="City">
@@ -70,7 +70,7 @@ export default async function AccountPage() {
         <Card>
           <h2 className="text-lg font-bold text-slate-950">Your data</h2>
           <p className="mt-2 text-sm leading-6 text-slate-600">
-            Download a copy of everything we hold about you: account details, profile, applications, job listings and membership records. See our{" "}
+            Download a copy of everything we hold about you: account details, profile, applications, invitations, job listings and membership records. See our{" "}
             <Link href="/privacy" className="font-semibold text-emerald-800 hover:underline">Privacy Policy</Link> and{" "}
             <Link href="/terms" className="font-semibold text-emerald-800 hover:underline">Terms of Service</Link>.
           </p>

@@ -9,12 +9,12 @@ export function LegacyAccountMigration({ user }: { user: CurrentUser }) {
       <PageHeader
         eyebrow="Account update"
         title={`Welcome back, ${user.fullName.split(" ")[0]}`}
-        description="Connect HR has moved from local services to jobs and recruitment. Choose how you want to use your existing account to open your dashboard."
+        description="Connect HR is now a jobs and recruitment platform. Choose how you want to use your existing account to open your dashboard."
       />
       <Card className="mb-6 border-sky-200 bg-sky-50">
-        <h2 className="font-semibold text-sky-950">Your account and previous records are preserved</h2>
+        <h2 className="font-semibold text-sky-950">Your account is preserved</h2>
         <p className="mt-1 text-sm leading-6 text-sky-900">
-          This updates your account role and creates a new career or company profile. It does not delete your previous marketplace records. Candidate profiles start private; you control whether employers can find you.
+          This updates your account role and creates a new career or company profile. Records from the earlier services marketplace have been retired. Candidate profiles start private; you control whether employers can find you.
         </p>
       </Card>
       <div className="grid gap-5 md:grid-cols-2">
